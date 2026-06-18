@@ -27,29 +27,3 @@ python3 loading_system_demo.py
 
 Press `Ctrl+C` to stop and see the sorting statistics report.
 
-## Project Structure
-
-```
-MosquitoSortingLab/
-├── loading_system_demo.py   # Full pipeline simulation demo
-├── README.md                # This file
-├── .gitignore               # Git ignore rules
-└── docs/                    # Documentation (coming soon)
-```
-
-## Tech Stack
-
-| Component | Technology | Language |
-|:---|:---|:---|
-| AI Vision | ONNX Runtime / TensorRT | Python |
-| Embedded Control | embassy-stm32 / embedded-hal | Rust |
-| Communication | SPI (binary protocol) | Shared |
-| Servo Drive | CSD7_02BX1 (RS Automation) | Hardware |
-
-## Team
-
-Internship project – CE Department, MKSOL 2026
-
-## License
-
-MIT
