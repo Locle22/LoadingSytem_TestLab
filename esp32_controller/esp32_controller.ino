@@ -1,23 +1,81 @@
 /*
  * ============================================================
- *   ESP32 Motor Controller – LoadingSystem V1
+ *   ESP32 WROOM Motor Controller – LoadingSystem V1
+ *   Board: ESP32 WROOM + CH340K + WS2812B RGB LED
+ *   
  *   Nhận lệnh từ Raspberry Pi qua USB Serial
- *   Điều khiển LED giả lập motor (chưa có motor thật)
+ *   Hiển thị trạng thái bằng LED RGB (mỗi trạng thái 1 màu)
  * ============================================================
  * 
- *   Protocol: 8 bytes mỗi packet
+ *   CÀI THƯ VIỆN:
+ *   Arduino IDE → Sketch → Include Library → Manage Libraries
+ *   → Tìm "Adafruit NeoPixel" → Install
+ *
+ *   CẤU HÌNH BOARD:
+ *   Tools → Board → ESP32 Arduino → ESP32 Dev Module
+ *   Tools → Port  → COMx (CH340)
+ * 
+ * ============================================================
+ *   PROTOCOL: 8 bytes mỗi packet
  *   TX (RPi → ESP32):  [0xAA][CMD][P1][P2][D_LO][D_HI][SEQ][CHK]
  *   RX (ESP32 → RPi):  [0x55][STATUS][JAR][ALARM][0][0][SEQ][CHK]
+ * ============================================================
  */
 
-// ===================== PROTOCOL DEFINITION =====================
+#include <Adafruit_NeoPixel.h>
 
-// Header bytes
+// ===================== CẤU HÌNH PIN =====================
+// Đổi số pin cho đúng với board của bạn:
+//   ESP32-S3:     GPIO 48
+//   ESP32-C3:     GPIO 8
+//   ESP32 WROOM:  GPIO 48 hoặc GPIO 2 (tùy board)
+//   Nếu không biết → thử 48 trước, không sáng thì đổi 8, rồi 2
+
+#define RGB_LED_PIN    48     // ← ĐỔI NẾU LED KHÔNG SÁNG
+#define NUM_LEDS       1      // Board có 1 LED RGB
+#define LED_BRIGHTNESS 50     // 0-255 (50 = vừa mắt, không chói)
+
+// Nếu board có LED đơn (không phải WS2812B), dùng fallback
+#define FALLBACK_LED_PIN 2    // LED xanh built-in (dùng nếu RGB không hoạt động)
+
+// ===================== KHAI BÁO LED =====================
+
+Adafruit_NeoPixel rgb(NUM_LEDS, RGB_LED_PIN, NEO_GRB + NEO_KHZ800);
+
+// Bảng màu cho từng trạng thái
+struct Color { uint8_t r, g, b; };
+
+const Color COLOR_OFF        = {  0,   0,   0};   // Tắt
+const Color COLOR_BOOT       = {128,   0, 255};   // Tím      – khởi động
+const Color COLOR_READY      = {  0, 255,   0};   // Xanh lá  – sẵn sàng (IDLE)
+const Color COLOR_MOVING     = {255, 200,   0};   // Vàng     – đang quay
+const Color COLOR_IN_POS     = {  0, 255,   0};   // Xanh lá  – đã đến vị trí
+const Color COLOR_HOME       = {  0, 100, 255};   // Xanh dương – đang home
+const Color COLOR_ALARM      = {255,   0,   0};   // Đỏ       – lỗi
+const Color COLOR_SERVO_OFF  = { 20,  20,  20};   // Trắng mờ – servo tắt
+const Color COLOR_RECEIVING  = {  0, 255, 255};   // Cyan     – đang nhận data
+
+// Màu cho từng loài muỗi (10 loài = 10 màu khác nhau)
+const Color JAR_COLORS[10] = {
+    {255,  50,  50},   // Lọ 0: Đỏ nhạt     – Aedes aegypti
+    {255, 100,   0},   // Lọ 1: Cam          – Aedes albopictus
+    {255, 255,   0},   // Lọ 2: Vàng         – Anopheles gambiae
+    {  0, 255,   0},   // Lọ 3: Xanh lá      – Culex pipiens
+    {  0, 255, 128},   // Lọ 4: Xanh ngọc    – Culex quinquefas.
+    {  0, 128, 255},   // Lọ 5: Xanh dương   – Anopheles stephensi
+    {  0,   0, 255},   // Lọ 6: Xanh đậm     – Aedes polynesiensis
+    {128,   0, 255},   // Lọ 7: Tím          – Mansonia uniformis
+    {255,   0, 255},   // Lọ 8: Hồng         – Toxorhynchites sp.
+    {255,   0, 128},   // Lọ 9: Hồng đậm     – Armigeres subalbatus
+};
+
+
+// ===================== PROTOCOL =====================
+
 #define HEADER_CMD    0xAA
 #define HEADER_STATUS 0x55
 #define PACKET_SIZE   8
 
-// Command types (RPi -> ESP32)
 enum CmdType : uint8_t {
     CMD_NOP         = 0x00,
     CMD_MOVE_TO     = 0x01,
@@ -30,7 +88,6 @@ enum CmdType : uint8_t {
     CMD_GET_STATUS  = 0x08,
 };
 
-// Status flags (ESP32 -> RPi)
 enum StatusFlag : uint8_t {
     STATUS_IDLE        = 0x00,
     STATUS_MOVING      = 0x01,
@@ -39,7 +96,6 @@ enum StatusFlag : uint8_t {
     STATUS_NOT_READY   = 0x04,
 };
 
-// Alarm codes
 enum AlarmCode : uint8_t {
     ALARM_NONE         = 0x00,
     ALARM_OVER_CURRENT = 0x01,
@@ -47,37 +103,68 @@ enum AlarmCode : uint8_t {
     ALARM_ENCODER_ERR  = 0x05,
 };
 
-// ===================== PIN DEFINITIONS =====================
 
-#define LED_BUILTIN_PIN  2    // LED xanh trên ESP32 DevKit
-#define LED_STATUS_PIN   LED_BUILTIN_PIN
-
-// Nếu có motor stepper/servo thật, đấu vào đây:
-// #define PULSE_PIN    18
-// #define DIR_PIN      19
-// #define ENABLE_PIN   21
-
-// ===================== GLOBAL STATE =====================
+// ===================== STATE =====================
 
 bool servo_on = false;
 uint8_t current_jar = 0;
 uint8_t current_status = STATUS_NOT_READY;
 uint8_t current_alarm = ALARM_NONE;
-
-// Buffer nhận lệnh
 uint8_t rx_buf[PACKET_SIZE];
 int rx_idx = 0;
 
-// Số lọ trên đĩa xoay
 #define NUM_JARS 10
 
-// ===================== HELPER FUNCTIONS =====================
+
+// ===================== LED FUNCTIONS =====================
+
+void led_set(Color c) {
+    rgb.setPixelColor(0, rgb.Color(c.r, c.g, c.b));
+    rgb.show();
+}
+
+void led_off() {
+    led_set(COLOR_OFF);
+}
+
+void led_flash(Color c, int times, int delay_ms) {
+    for (int i = 0; i < times; i++) {
+        led_set(c);
+        delay(delay_ms);
+        led_off();
+        delay(delay_ms);
+    }
+}
+
+void led_fade_in_out(Color c, int duration_ms) {
+    // Fade in
+    for (int b = 0; b <= LED_BRIGHTNESS; b += 5) {
+        rgb.setPixelColor(0, rgb.Color(
+            c.r * b / 255,
+            c.g * b / 255,
+            c.b * b / 255
+        ));
+        rgb.show();
+        delay(duration_ms / (LED_BRIGHTNESS / 5) / 2);
+    }
+    // Fade out
+    for (int b = LED_BRIGHTNESS; b >= 0; b -= 5) {
+        rgb.setPixelColor(0, rgb.Color(
+            c.r * b / 255,
+            c.g * b / 255,
+            c.b * b / 255
+        ));
+        rgb.show();
+        delay(duration_ms / (LED_BRIGHTNESS / 5) / 2);
+    }
+}
+
+
+// ===================== HELPER =====================
 
 uint8_t calc_checksum(uint8_t* data, int len) {
     uint8_t chk = 0;
-    for (int i = 0; i < len; i++) {
-        chk ^= data[i];
-    }
+    for (int i = 0; i < len; i++) chk ^= data[i];
     return chk;
 }
 
@@ -91,69 +178,55 @@ void send_status(uint8_t status, uint8_t jar, uint8_t alarm, uint8_t seq) {
     resp[5] = 0x00;
     resp[6] = seq;
     resp[7] = calc_checksum(resp, 7);
-
     Serial.write(resp, PACKET_SIZE);
-
-    // Debug print (dùng Serial2 nếu muốn debug riêng)
-    // Serial2.printf("[TX] status=%d jar=%d alarm=%d seq=%d\n",
-    //               status, jar, alarm, seq);
 }
 
-void blink_led(int times, int delay_ms) {
-    for (int i = 0; i < times; i++) {
-        digitalWrite(LED_STATUS_PIN, HIGH);
-        delay(delay_ms);
-        digitalWrite(LED_STATUS_PIN, LOW);
-        delay(delay_ms);
-    }
-}
 
 // ===================== COMMAND HANDLERS =====================
 
 void handle_move_to(uint8_t target_jar, uint8_t seq) {
     if (!servo_on) {
+        led_flash(COLOR_ALARM, 2, 100);
         send_status(STATUS_NOT_READY, current_jar, ALARM_NONE, seq);
         return;
     }
 
     if (target_jar >= NUM_JARS) {
+        led_set(COLOR_ALARM);
         send_status(STATUS_ALARM, current_jar, ALARM_ENCODER_ERR, seq);
         return;
     }
 
-    // Tính số bước cần quay
-    int steps = abs((int)target_jar - (int)current_jar);
-
-    // === GIẢ LẬP MOTOR ===
-    // Trên thật: phát xung Pulse/Direction cho driver
-    // Trên giả lập: nháy LED + delay
     current_status = STATUS_MOVING;
 
-    for (int i = 0; i < steps; i++) {
-        digitalWrite(LED_STATUS_PIN, HIGH);
-        delay(150);
-        digitalWrite(LED_STATUS_PIN, LOW);
-        delay(150);
-        // Trên thật: phát N xung cho 1 bước lọ
-        // pulse_generator_step(PULSES_PER_JAR);
-    }
+    // VÀNG = đang di chuyển
+    led_set(COLOR_MOVING);
+
+    int steps = abs((int)target_jar - (int)current_jar);
+    delay(steps * 300);  // Giả lập thời gian quay
 
     current_jar = target_jar;
     current_status = STATUS_IN_POSITION;
+
+    // Hiện MÀU CỦA LỌ đích (mỗi loài muỗi 1 màu)
+    led_flash(JAR_COLORS[target_jar], 3, 150);
+
+    // Giữ màu xanh lá = sẵn sàng
+    led_set(COLOR_READY);
 
     send_status(STATUS_IN_POSITION, current_jar, ALARM_NONE, seq);
 }
 
 void handle_home(uint8_t seq) {
-    // Quay về vị trí 0
     current_status = STATUS_MOVING;
 
-    // Giả lập homing
-    blink_led(5, 100);
+    // XANH DƯƠNG = đang home
+    led_fade_in_out(COLOR_HOME, 1000);
 
     current_jar = 0;
     current_status = STATUS_IN_POSITION;
 
+    led_set(COLOR_READY);
     send_status(STATUS_IN_POSITION, 0, ALARM_NONE, seq);
 }
 
@@ -161,10 +234,9 @@ void handle_servo_on(uint8_t seq) {
     servo_on = true;
     current_status = STATUS_IDLE;
 
-    // LED sáng = servo ON
-    digitalWrite(LED_STATUS_PIN, HIGH);
-    delay(500);
-    digitalWrite(LED_STATUS_PIN, LOW);
+    // XANH LÁ = servo bật, sẵn sàng
+    led_flash(COLOR_READY, 2, 200);
+    led_set(COLOR_READY);
 
     send_status(STATUS_IDLE, current_jar, ALARM_NONE, seq);
 }
@@ -173,23 +245,26 @@ void handle_servo_off(uint8_t seq) {
     servo_on = false;
     current_status = STATUS_NOT_READY;
 
-    // LED nháy nhanh = servo OFF
-    blink_led(3, 50);
+    // TRẮNG MỜ = servo tắt
+    led_fade_in_out(COLOR_READY, 500);
+    led_set(COLOR_SERVO_OFF);
 
     send_status(STATUS_NOT_READY, current_jar, ALARM_NONE, seq);
 }
 
 void handle_stop(uint8_t seq) {
-    // Dừng khẩn cấp
     current_status = STATUS_IDLE;
 
-    // Trên thật: dừng phát xung ngay lập tức
-    // timer_stop();
+    // ĐỎ nháy nhanh = dừng khẩn cấp
+    led_flash(COLOR_ALARM, 5, 50);
+    led_set(COLOR_READY);
 
     send_status(STATUS_IDLE, current_jar, ALARM_NONE, seq);
 }
 
 void handle_get_status(uint8_t seq) {
+    // CYAN nháy 1 lần = đang phản hồi
+    led_flash(COLOR_RECEIVING, 1, 50);
     send_status(current_status, current_jar, current_alarm, seq);
 }
 
@@ -197,46 +272,56 @@ void handle_alarm_reset(uint8_t seq) {
     current_alarm = ALARM_NONE;
     current_status = servo_on ? STATUS_IDLE : STATUS_NOT_READY;
 
+    led_flash(COLOR_HOME, 3, 100);
+    led_set(servo_on ? COLOR_READY : COLOR_SERVO_OFF);
+
     send_status(current_status, current_jar, ALARM_NONE, seq);
 }
+
 
 // ===================== PROCESS PACKET =====================
 
 void process_packet(uint8_t* pkt) {
-    // Verify checksum
     uint8_t expected_chk = calc_checksum(pkt, 7);
-    if (pkt[7] != expected_chk) {
-        // Checksum sai → bỏ qua
-        return;
-    }
+    if (pkt[7] != expected_chk) return;  // checksum sai
 
-    uint8_t cmd  = pkt[1];
-    uint8_t p1   = pkt[2];  // param1
-    uint8_t p2   = pkt[3];  // param2
-    uint16_t data = pkt[4] | (pkt[5] << 8);
-    uint8_t seq  = pkt[6];
+    uint8_t cmd = pkt[1];
+    uint8_t p1  = pkt[2];
+    uint8_t seq = pkt[6];
 
     switch (cmd) {
-        case CMD_MOVE_TO:     handle_move_to(p1, seq);    break;
-        case CMD_HOME:        handle_home(seq);           break;
-        case CMD_STOP:        handle_stop(seq);           break;
-        case CMD_SERVO_ON:    handle_servo_on(seq);       break;
-        case CMD_SERVO_OFF:   handle_servo_off(seq);      break;
-        case CMD_ALARM_RESET: handle_alarm_reset(seq);    break;
-        case CMD_GET_STATUS:  handle_get_status(seq);     break;
-        case CMD_NOP:         handle_get_status(seq);     break;
+        case CMD_MOVE_TO:     handle_move_to(p1, seq);  break;
+        case CMD_HOME:        handle_home(seq);         break;
+        case CMD_STOP:        handle_stop(seq);         break;
+        case CMD_SERVO_ON:    handle_servo_on(seq);     break;
+        case CMD_SERVO_OFF:   handle_servo_off(seq);    break;
+        case CMD_ALARM_RESET: handle_alarm_reset(seq);  break;
+        case CMD_GET_STATUS:  handle_get_status(seq);   break;
+        case CMD_NOP:         handle_get_status(seq);   break;
         default: break;
     }
 }
+
 
 // ===================== SETUP & LOOP =====================
 
 void setup() {
     Serial.begin(115200);
-    pinMode(LED_STATUS_PIN, OUTPUT);
 
-    // Nháy LED 3 lần = ESP32 đã sẵn sàng
-    blink_led(3, 200);
+    // Khởi tạo RGB LED
+    rgb.begin();
+    rgb.setBrightness(LED_BRIGHTNESS);
+    rgb.show();
+
+    // Animation boot: Tím → Đỏ → Vàng → Xanh lá → Xanh dương → Tím
+    Color boot_seq[] = {COLOR_BOOT, COLOR_ALARM, COLOR_MOVING, COLOR_READY, COLOR_HOME, COLOR_BOOT};
+    for (int i = 0; i < 6; i++) {
+        led_set(boot_seq[i]);
+        delay(200);
+    }
+
+    // Kết thúc boot: Trắng mờ = chờ lệnh
+    led_set(COLOR_SERVO_OFF);
 
     current_status = STATUS_NOT_READY;
     rx_idx = 0;
@@ -246,15 +331,12 @@ void loop() {
     while (Serial.available()) {
         uint8_t b = Serial.read();
 
-        // Chờ header byte 0xAA
-        if (rx_idx == 0 && b != HEADER_CMD) {
-            continue;  // Bỏ byte rác
-        }
+        if (rx_idx == 0 && b != HEADER_CMD) continue;
 
         rx_buf[rx_idx++] = b;
 
-        // Nhận đủ 8 bytes → xử lý
         if (rx_idx >= PACKET_SIZE) {
+            led_flash(COLOR_RECEIVING, 1, 30);  // Cyan nháy = nhận packet
             process_packet(rx_buf);
             rx_idx = 0;
         }
