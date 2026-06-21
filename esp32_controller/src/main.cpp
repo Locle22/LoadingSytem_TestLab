@@ -1,3 +1,4 @@
+#include <Arduino.h>
 /*
  * ============================================================
  *   ESP32 WROOM Motor Controller – LoadingSystem V1
@@ -31,7 +32,7 @@
 //   ESP32 WROOM:  GPIO 48 hoặc GPIO 2 (tùy board)
 //   Nếu không biết → thử 48 trước, không sáng thì đổi 8, rồi 2
 
-#define RGB_LED_PIN    45     // ESP32-S3 WROOM CH340K built-in RGB LED data pin
+#define RGB_LED_PIN    48     // ESP32-S3 WROOM CH340K built-in RGB LED data pin
 #define NUM_LEDS       1      // Board có 1 LED RGB
 #define LED_BRIGHTNESS 50     // 0-255 (50 = vừa mắt, không chói)
 
