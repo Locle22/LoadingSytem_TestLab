@@ -14,7 +14,7 @@ Automated mosquito sorting system using AI vision and embedded control.
 ## Architecture
 
 ```
-Camera (4K) → Raspberry Pi / Jetson Nano → SPI → STM32 (Rust) → Servo Drive → Motor
+Camera (4K) → Raspberry Pi→ SPI → STM32 (Rust) → Servo Drive → Motor
                     (AI inference)              (Pulse/Direction)
 ```
 
