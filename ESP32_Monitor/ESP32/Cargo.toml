@@ -1,0 +1,30 @@
+[package]
+name = "esp32-node"
+version = "0.1.0"
+edition = "2021"
+description = "ESP32-S3 Node: SPI slave nhận lệnh điều khiển motor từ RPi4 Host"
+
+[dependencies]
+# ── Shared protocol library ──────────────────────────────────────────────────
+# Sử dụng path dependency, không bật feature "std" (Node chạy no_std)
+spi-protocol = { path = "../spi-protocol" }
+
+# ── ESP32-S3 HAL & Runtime ───────────────────────────────────────────────────
+# esp-hal v1.0.0-beta.0: HAL cho ESP32-S3
+# Feature "unstable" cần thiết cho SPI slave API (còn đang phát triển)
+esp-hal = { version = "1.0.0-beta.0", features = ["esp32s3", "unstable"] }
+
+# ── Serial output (thay thế cho std::println) ────────────────────────────────
+esp-println = { version = "0.14", features = ["esp32s3"] }
+
+# ── Panic handler cho embedded ────────────────────────────────────────────────
+esp-backtrace = { version = "0.15", features = ["esp32s3", "panic-handler"] }
+
+# ── Critical section cho shared state (interrupt-safe) ───────────────────────
+critical-section = "1.2"
+
+[profile.release]
+opt-level = "s"       # Tối ưu kích thước binary
+lto = "fat"           # Link-time optimization toàn bộ
+codegen-units = 1     # Tối ưu tốt hơn nhưng compile chậm hơn
+debug = true          # Giữ debug info cho backtrace

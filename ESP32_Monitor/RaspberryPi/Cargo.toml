@@ -1,0 +1,25 @@
+[package]
+name = "rpi-motor-host"
+version = "0.1.0"
+edition = "2021"
+description = "Raspberry Pi 4 Host application for SPI motor control protocol"
+
+[features]
+default = []
+# Bật feature "rpi" khi build trên Raspberry Pi thật (dùng rppal cho SPI + GPIO)
+# Khi không bật, sử dụng MockTransport cho development/testing trên Windows/Mac
+rpi = ["dep:rppal"]
+
+[dependencies]
+# Thư viện giao thức SPI chia sẻ — bật feature "std" cho Host
+spi-protocol = { path = "../spi-protocol", features = ["std"] }
+
+# Truy cập SPI và GPIO trên Raspberry Pi (rppal) — chỉ khi feature "rpi" bật
+rppal = { version = "0.19", features = ["hal"], optional = true }
+
+# Logging theo chuẩn Rust (CQ-10)
+log = "0.4"
+env_logger = "0.11"
+
+# Derive macro cho Error types
+thiserror = "2"

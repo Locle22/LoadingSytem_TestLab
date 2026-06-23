@@ -1,0 +1,14 @@
+[package]
+name = "spi-protocol"
+version = "0.1.0"
+edition = "2021"
+description = "Shared SPI communication protocol library for RPi4 ↔ ESP32-S3 motor control"
+
+[features]
+default = []
+std = []                        # Enable for Host (RPi4): std::fmt, logging support
+defmt-logging = ["dep:defmt"]   # Enable for Node (ESP32): defmt embedded logging
+
+[dependencies]
+crc = { version = "3.2", default-features = false }
+defmt = { version = "0.3", optional = true }
