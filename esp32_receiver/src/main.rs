@@ -35,7 +35,14 @@ fn main() -> anyhow::Result<()> {
 
     loop {
         if let Some((msg, src)) = receiver.receive_packet() {
-            info!("Received from {}: {}", src, msg);
+            match protocol::Packet::deserialize(&msg) {
+                Ok(packet) => {
+                    info!("Received from {}: [Seq {}] {}", src, packet.seq_id, packet.command);
+                }
+                Err(e) => {
+                    log::warn!("Failed to parse packet from {}: {}", src, e);
+                }
+            }
         }
 
         // Small delay to prevent watchdog starvation if no packets

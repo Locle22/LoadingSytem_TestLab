@@ -52,12 +52,12 @@ impl<'a> WifiReceiver<'a> {
         })
     }
 
-    /// Receives a packet and returns the string content and sender address
-    pub fn receive_packet(&self) -> Option<(String, std::net::SocketAddr)> {
+    /// Receives a packet and returns the raw bytes and sender address
+    pub fn receive_packet(&self) -> Option<(Vec<u8>, std::net::SocketAddr)> {
         let mut buf = [0u8; 1024];
         match self.socket.recv_from(&mut buf) {
             Ok((amt, src)) => {
-                let msg = String::from_utf8_lossy(&buf[..amt]).into_owned();
+                let msg = buf[..amt].to_vec();
                 Some((msg, src))
             }
             Err(e) => {

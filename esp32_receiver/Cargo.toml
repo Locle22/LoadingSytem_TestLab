@@ -4,7 +4,6 @@ version = "0.1.0"
 authors = ["Antigravity"]
 edition = "2021"
 resolver = "2"
-rust-version = "1.71"
 
 [profile.release]
 opt-level = "s"
@@ -29,6 +28,7 @@ anyhow = "1.0"
 esp-idf-svc = { version = "0.52.1", default-features = false }
 esp-idf-hal = "0.46.2"
 esp-idf-sys = "0.37.2"
+protocol = { path = "../protocol" }
 
 [build-dependencies]
 embuild = { version = "0.32.0", features = ["espidf"] }

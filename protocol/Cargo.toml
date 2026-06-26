@@ -1,0 +1,10 @@
+[package]
+name = "protocol"
+version = "0.1.0"
+edition = "2021"
+description = "Shared command protocol between Raspberry Pi and ESP32"
+
+# no_std compatible — works on both Pi (std) and ESP32 (esp-idf std)
+[features]
+default = ["std"]
+std = []
