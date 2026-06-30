@@ -1,0 +1,16 @@
+[package]
+name = "ai_vision"
+version = "0.1.0"
+edition = "2021"
+description = "Core YOLO inference library for mosquito species detection via ONNX Runtime"
+
+[dependencies]
+ort = { version = "2.0.0-rc.12", features = ["ndarray"] }
+ndarray = "0.17"
+image = "0.25"
+thiserror = "2"
+
+[features]
+default = []
+cuda = ["ort/cuda"]
+tensorrt = ["ort/tensorrt"]

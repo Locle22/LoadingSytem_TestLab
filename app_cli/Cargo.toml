@@ -1,0 +1,15 @@
+[package]
+name = "app_cli"
+version = "0.1.0"
+edition = "2021"
+description = "CLI thin client for YOLOv9e mosquito species detection"
+
+[dependencies]
+ai_vision = { path = "../ai_vision" }
+clap = { version = "4", features = ["derive"] }
+anyhow = "1"
+
+[features]
+default = []
+cuda = ["ai_vision/cuda"]
+tensorrt = ["ai_vision/tensorrt"]
