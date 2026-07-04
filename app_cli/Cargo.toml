@@ -6,8 +6,10 @@ description = "CLI thin client for YOLOv9e mosquito species detection"
 
 [dependencies]
 ai_vision = { path = "../ai_vision" }
-clap = { version = "4", features = ["derive"] }
-anyhow = "1"
+clap = { version = "4.5", features = ["derive"] }
+anyhow = "1.0"
+minifb = "0.27"
+image = "0.25"
 
 [features]
 default = []

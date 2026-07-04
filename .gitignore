@@ -5,6 +5,7 @@ target/
 # Bỏ qua file weight gốc quá nặng (Chỉ giữ lại file .onnx nhỏ gọn)
 *.pt
 *.pth
+*.onnx
 
 # Bỏ qua các file hệ thống
 .DS_Store

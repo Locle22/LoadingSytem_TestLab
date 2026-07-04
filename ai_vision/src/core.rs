@@ -14,7 +14,7 @@ use ndarray::Array4;
 use ort::session::Session;
 use ort::value::Tensor;
 
-use crate::process::{postprocess, preprocess};
+use crate::process::{postprocess, preprocess, preprocess_image, LetterboxInfo};
 use crate::types::{ComputeDevice, Detection, DetectorError};
 
 // ──────────────────────────────────────────────
@@ -106,13 +106,23 @@ impl YoloDetector {
         let (input_tensor, letterbox_info) =
             preprocess(image_path, self.input_width, self.input_height)?;
 
+        self.detect_tensor(input_tensor, letterbox_info)
+    }
+
+    /// Run the full detection pipeline on an in-memory image.
+    /// Eliminates disk I/O bottleneck for real-time video streams.
+    pub fn detect_image(&self, img: &image::DynamicImage) -> Result<Vec<Detection>, DetectorError> {
+        let (input_tensor, letterbox_info) =
+            preprocess_image(img, self.input_width, self.input_height)?;
+
+        self.detect_tensor(input_tensor, letterbox_info)
+    }
+
+    fn detect_tensor(&self, input_tensor: Array4<f32>, letterbox_info: LetterboxInfo) -> Result<Vec<Detection>, DetectorError> {
         // Stage 2 — Inference
         let raw_output = self.run_inference(input_tensor)?;
 
         // Stage 3 — Post-process
-        //
-        // `try_extract_tensor` returns (&Shape, &[f32]) where Shape
-        // derefs to [i64].  We pass both to postprocess.
         let (shape, data) = raw_output
             .try_extract_tensor::<f32>()
             .map_err(|e| {

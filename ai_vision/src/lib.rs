@@ -26,7 +26,9 @@
 // ── Internal modules ───────────────────────────────────────────────
 pub mod types;
 pub mod core;
-mod process;
+pub mod draw;
+pub mod process;
+pub mod stream;
 
 // ── Public re-exports (ergonomic top-level access) ─────────────────
 pub use crate::core::YoloDetector;

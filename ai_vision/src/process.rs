@@ -54,7 +54,6 @@ pub(crate) fn preprocess(
     input_w: u32,
     input_h: u32,
 ) -> Result<(Array4<f32>, LetterboxInfo), DetectorError> {
-    // ── 1. Load image ──────────────────────────────────────────────
     let img = image::open(image_path).map_err(|e| {
         DetectorError::ImageProcessing(format!(
             "Cannot open '{}': {e}",
@@ -62,6 +61,14 @@ pub(crate) fn preprocess(
         ))
     })?;
 
+    preprocess_image(&img, input_w, input_h)
+}
+
+pub(crate) fn preprocess_image(
+    img: &image::DynamicImage,
+    input_w: u32,
+    input_h: u32,
+) -> Result<(Array4<f32>, LetterboxInfo), DetectorError> {
     let (orig_w, orig_h) = (img.width(), img.height());
 
     // ── 2. Compute letterbox geometry ──────────────────────────────
