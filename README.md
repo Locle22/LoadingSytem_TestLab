@@ -1,4 +1,4 @@
-# MosquitoSortingLab 🦟 - LoadingSystem (Branch: feature-esp32-serial-comm)
+# MosquitoSortingLab 🦟 - LoadingSystem  
 
 Bản đặc tả tài liệu kỹ thuật và Kịch bản kiểm thử (Test Cases) hoàn chỉnh dành cho phân hệ thực nghiệm nhúng (STEM).
 
@@ -7,7 +7,7 @@ Bản đặc tả tài liệu kỹ thuật và Kịch bản kiểm thử (Test C
 ## 1. Tổng Quan Dự Án & Kiến Trúc Phân Hệ
 Dự án **LoadingSystem** tích hợp công nghệ xử lý ảnh (AI Edge Vision) và cơ điện tử chính xác để tự động hóa quy trình phân luồng, nhận diện và đóng hũ tự động các mẫu vật thể sinh học/nông sản. Trong phân hệ thực nghiệm này, hệ thống tập trung phân loại **10 loài muỗi** đặc thù với độ chính xác cơ khí yêu cầu nghiêm ngặt $\ge 98\%$.
 
-### Sơ đồ luồng dữ liệu (Dataflow Pipeline)
+### Sơ đồ luồng dữ liệu  
 ```
 [Camera Công Nghiệp]
        │ (Quét liên tục bề mặt băng tải)
@@ -24,7 +24,7 @@ Dự án **LoadingSystem** tích hợp công nghệ xử lý ảnh (AI Edge Visi
 
 ---
 
-## 2. Đặc Tả Giao Thức Nhị Phân (Binary Protocol Specification)
+## 2. Đặc Tả Giao Thức Nhị Phân 
 Hệ thống sử dụng gói tin cố định kích thước **8 bytes** truyền nhận song phương (Full-duplex/UART) giúp tối ưu hóa băng thông, triệt tiêu độ trễ phân tích cú pháp chuỗi (JSON/String parsing) và chống nhiễu công nghiệp.
 
 ### 2.1. Cấu trúc Gói lệnh (TX: RPi → ESP32)
@@ -77,7 +77,7 @@ Hệ thống sử dụng gói tin cố định kích thước **8 bytes** truy�
 
 ---
 
-## 3. Bản Kịch Bản Kiểm Thử Hoàn Chỉnh (Comprehensive Test Suite)
+## 3. Bản Kịch Bản Kiểm Thử Hoàn Chỉnh  
 
 Dưới đây là ma trận checklist kiểm thử tích hợp phần mềm và phần cứng biên, được thiết kế dưới dạng bảng kiểm soát chất lượng nghiệm thu.
 
@@ -110,7 +110,7 @@ Dưới đây là ma trận checklist kiểm thử tích hợp phần mềm và 
 | **TC3.2** | Bộ lọc ngưỡng tin cậy mô hình AI | Mô hình mạng nơ-ron nhận diện muỗi và trả kết quả với độ chính xác trung bình. | Mô phỏng AI trả về kết quả định danh loài với mức độ tự tin `confidence = 0.80` (ngưỡng hệ thống yêu cầu `0.85`). | - Script kiểm tra điều kiện logic nội bộ.<br>- In nhật ký hệ thống: `"confidence thấp -> bỏ qua"`.<br>- Chặn không gửi lệnh điều khiển xuống Serial để ngừa gạt nhầm. | `[ ]` |
 | **TC3.3** | Tự động xử lý phục hồi sau lỗi phần cứng | Cơ cấu cơ khí gửi cờ lỗi `STATUS_ALARM` lên do kẹt động cơ nhẹ. | Script Python nhận chuỗi dữ liệu trạng thái từ Serial. | - Chương trình Python lập tức nhận dạng lỗi.<br>- Tự động kích hoạt luồng khẩn cấp gửi gói tin `CMD_ALARM_RESET` xuống trạm nhúng nhằm khôi phục trạng thái làm việc. | `[ ]` |
 
-### 3.4. Nhóm 4: Kiểm thử Hiệu Năng Cao & Quá Tải Hệ Thống (Stress & Rate Limiting Tests)
+### 3.4. Nhóm 4: Kiểm thử Hiệu Năng Cao & Quá Tải Hệ Thống 
 *Mục tiêu: Kiểm tra độ ổn định bền bỉ của hệ thống nhúng khi hoạt động liên tục với tải suất công nghiệp.*
 
 | Mã TC | Tên Kịch Bản | Tiền Điều Kiện | Hành Động (Input) | Kết Quả Kỳ Vọng (Expected Output) | Trạng Thái |
@@ -120,7 +120,7 @@ Dưới đây là ma trận checklist kiểm thử tích hợp phần mềm và 
 
 ---
 
-## 4. Hướng Dẫn Tối Ưu Hóa Khi Triển Khai Phần Cứng Thật (Physical HW Guide)
+## 4. Hướng Dẫn Tối Ưu Hóa Khi Triển Khai Phần Cứng Thật  
 
 ### 4.1. Khắc phục vấn đề Blocking logic (Treo hệ thống) từ mã nguồn mô phỏng
 Trong mã nguồn thử nghiệm ban đầu (`esp32_controller.ino`), việc sử dụng hàm chặn luồng `delay(steps * 300);` sẽ **làm đóng băng hoàn toàn vi điều khiển**. Trong suốt thời gian delay này, chip ESP32 không thể đọc thanh ghi Serial, dẫn tới việc bỏ sót lệnh dừng khẩn cấp `CMD_STOP` từ Raspberry Pi gửi xuống.
