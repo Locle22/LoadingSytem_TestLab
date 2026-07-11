@@ -23,7 +23,7 @@ use ai_vision::draw::draw_detections;
 use ai_vision::stream::MjpegStream;
 use ai_vision::{ComputeDevice, YoloDetector};
 
-use crate::iot::{get_species_color, UdpSender};
+use crate::iot::{get_species_color, UdpSender, CLASS_ID_NONE};
 
 // ──────────────────────────────────────────────
 //  CLI Definition
@@ -172,17 +172,18 @@ fn run_realtime(detector: &YoloDetector, url: &str, esp_ip: Option<&str>) -> Res
                                     .collect();
                                 println!("🦟 Đã phát hiện: {}", species_list.join(", "));
 
-                                // Giao tiếp với ESP32 S3 (Điều khiển đèn LED)
+                                // Giao tiếp với ESP32 S3 (Điều khiển đèn LED + Servo đĩa xoay)
                                 if let Some(ref sender) = udp_sender {
-                                    // Bật đèn màu tương ứng với loài có độ tin cậy cao nhất (con đầu tiên)
+                                    // Lấy loài có độ tin cậy cao nhất
                                     let best_match = &detections[0];
                                     let (r, g, b) = get_species_color(&best_match.class_name);
-                                    sender.send_color(r, g, b);
+                                    let class_id = best_match.class_id as u8;
+                                    sender.send_command(r, g, b, class_id);
                                 }
                             } else {
-                                // Tắt đèn (Gửi màu đen) nếu không có con muỗi nào
+                                // Tắt đèn, giữ nguyên servo
                                 if let Some(ref sender) = udp_sender {
-                                    sender.send_color(0, 0, 0);
+                                    sender.send_command(0, 0, 0, CLASS_ID_NONE);
                                 }
                             }
 

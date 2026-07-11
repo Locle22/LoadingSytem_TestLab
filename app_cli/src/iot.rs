@@ -2,6 +2,13 @@ use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::net::UdpSocket;
 
+// ──────────────────────────────────────────────
+//  Giao thức UDP: [R, G, B, class_id] — 4 bytes
+// ──────────────────────────────────────────────
+
+/// Mã class_id đặc biệt: Không phát hiện muỗi nào → tắt LED, servo giữ nguyên.
+pub const CLASS_ID_NONE: u8 = 0xFF;
+
 /// Giao thức gửi gói tin UDP không chờ (Non-blocking UDP Sender)
 pub struct UdpSender {
     socket: UdpSocket,
@@ -22,10 +29,15 @@ impl UdpSender {
         })
     }
 
-    /// Gửi 3 byte màu [R, G, B] sang ESP32.
-    pub fn send_color(&self, r: u8, g: u8, b: u8) {
-        let payload = [r, g, b];
-        // Bắn gói tin và bỏ qua lỗi (Fire-and-forget), không cần thiết làm sập ứng dụng nếu mạng lag.
+    /// Gửi lệnh điều khiển LED + Servo sang ESP32.
+    ///
+    /// Giao thức 4 byte: `[R, G, B, class_id]`
+    /// - `R, G, B`: Mã màu đèn LED cảnh báo
+    /// - `class_id`: Chỉ số loài muỗi (0..35), ESP32 sẽ xoay servo đến góc `class_id * 10`
+    ///   Giá trị đặc biệt `0xFF` = không phát hiện → tắt LED, servo giữ nguyên.
+    pub fn send_command(&self, r: u8, g: u8, b: u8, class_id: u8) {
+        let payload = [r, g, b, class_id];
+        // Fire-and-forget: Bắn gói tin và bỏ qua lỗi mạng.
         let _ = self.socket.send_to(&payload, &self.target_addr);
     }
 }
