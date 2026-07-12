@@ -154,6 +154,9 @@ fn run_realtime(detector: &YoloDetector, url: &str, esp_ip: Option<&str>) -> Res
             let inference_interval = Duration::from_millis(200); // 5 FPS
             let mut last_inference_time = Instant::now();
 
+            let action_cooldown = Duration::from_secs(5);
+            let mut last_action_time = Instant::now() - action_cooldown; // Allow immediate first action
+
             while *running_clone.read().unwrap() {
                 if last_inference_time.elapsed() >= inference_interval {
                     // Try to get the latest frame
@@ -174,16 +177,21 @@ fn run_realtime(detector: &YoloDetector, url: &str, esp_ip: Option<&str>) -> Res
 
                                 // Giao tiếp với ESP32 S3 (Điều khiển đèn LED + Servo đĩa xoay)
                                 if let Some(ref sender) = udp_sender {
-                                    // Lấy loài có độ tin cậy cao nhất
-                                    let best_match = &detections[0];
-                                    let (r, g, b) = get_species_color(&best_match.class_name);
-                                    let class_id = best_match.class_id as u8;
-                                    sender.send_command(r, g, b, class_id);
+                                    if last_action_time.elapsed() >= action_cooldown {
+                                        last_action_time = Instant::now();
+                                        // Lấy loài có độ tin cậy cao nhất
+                                        let best_match = &detections[0];
+                                        let class_id = best_match.class_id as u8;
+                                        let (r, g, b) = get_species_color(class_id);
+                                        sender.send_command(r, g, b, class_id);
+                                    }
                                 }
                             } else {
                                 // Tắt đèn, giữ nguyên servo
                                 if let Some(ref sender) = udp_sender {
-                                    sender.send_command(0, 0, 0, CLASS_ID_NONE);
+                                    if last_action_time.elapsed() >= action_cooldown {
+                                        sender.send_command(0, 0, 0, CLASS_ID_NONE);
+                                    }
                                 }
                             }
 

@@ -42,39 +42,34 @@ impl UdpSender {
     }
 }
 
-/// Chuyển đổi tên loài muỗi thành mã màu RGB.
-/// - Các loài muỗi cực kỳ nguy hiểm (Aedes, Culex, Anopheles) sẽ được gán màu riêng biệt.
-/// - Các loài muỗi khác sẽ được tạo mã màu ngẫu nhiên nhưng CỐ ĐỊNH dựa trên Hash.
-pub fn get_species_color(species_name: &str) -> (u8, u8, u8) {
-    let name_lower = species_name.to_lowercase();
+/// Chuyển đổi ID loài muỗi (0..35) thành mã màu RGB.
+/// - Mỗi loài sẽ có một màu sắc duy nhất dựa trên vòng tròn màu HSV (Hue phân bổ đều 360 độ).
+pub fn get_species_color(class_id: u8) -> (u8, u8, u8) {
+    // 36 loài -> Mỗi loài cách nhau 10 độ trên vòng tròn màu
+    let hue = (class_id as f32 * 10.0) % 360.0;
+    
+    // Saturation = 1.0, Value = 1.0 (Màu rực rỡ nhất)
+    let c = 1.0;
+    let x = c * (1.0 - ((hue / 60.0) % 2.0 - 1.0).abs());
+    let m = 0.0;
 
-    // Nhóm 1: Muỗi vằn (Truyền sốt xuất huyết) -> CẢNH BÁO ĐỎ
-    if name_lower.contains("aedes") {
-        return (255, 0, 0); // Đỏ
-    }
-    // Nhóm 2: Muỗi Culex (Truyền viêm não Nhật Bản) -> CẢNH BÁO XANH DƯƠNG
-    else if name_lower.contains("culex") {
-        return (0, 0, 255); // Xanh dương
-    }
-    // Nhóm 3: Muỗi Anopheles (Truyền sốt rét) -> CẢNH BÁO XANH LÁ
-    else if name_lower.contains("anopheles") {
-        return (0, 255, 0); // Xanh lá
-    }
+    let (r_prime, g_prime, b_prime) = if hue < 60.0 {
+        (c, x, 0.0)
+    } else if hue < 120.0 {
+        (x, c, 0.0)
+    } else if hue < 180.0 {
+        (0.0, c, x)
+    } else if hue < 240.0 {
+        (0.0, x, c)
+    } else if hue < 300.0 {
+        (x, 0.0, c)
+    } else {
+        (c, 0.0, x)
+    };
 
-    // Nhóm 4: Các loài muỗi khác (Tạo mã màu ngẫu nhiên qua Hash)
-    let mut hasher = DefaultHasher::new();
-    species_name.hash(&mut hasher);
-    let hash_val = hasher.finish();
-
-    // Trích xuất 3 byte cuối từ mã Hash để làm dải R, G, B
-    let r = (hash_val & 0xFF) as u8;
-    let g = ((hash_val >> 8) & 0xFF) as u8;
-    let b = ((hash_val >> 16) & 0xFF) as u8;
-
-    // Giới hạn độ sáng (để tránh LED quá chói hoặc tối thui, ta ép sáng)
-    let r = r.max(50).min(200);
-    let g = g.max(50).min(200);
-    let b = b.max(50).min(200);
-
-    (r, g, b)
+    (
+        ((r_prime + m) * 255.0) as u8,
+        ((g_prime + m) * 255.0) as u8,
+        ((b_prime + m) * 255.0) as u8,
+    )
 }
