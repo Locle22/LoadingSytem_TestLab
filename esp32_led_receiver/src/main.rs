@@ -139,7 +139,7 @@ fn main() -> anyhow::Result<()> {
     let mut wifi = EspWifi::new(peripherals.modem, sys_loop, Some(nvs))?;
 
     wifi.set_configuration(&Configuration::Client(ClientConfiguration {
-        ssid: "Loc".try_into().unwrap(),
+        ssid: "The Loc".try_into().unwrap(),
         password: "66666666".try_into().unwrap(),
         auth_method: AuthMethod::WPA2Personal,
         ..Default::default()
@@ -160,7 +160,9 @@ fn main() -> anyhow::Result<()> {
     let mut ws2812 = Ws2812Esp32Rmt::new(channel, led_pin)?;
 
     // ── 3. Cấu hình Servo SG90 360° (Chân GPIO 4) ──
-    let timer_config = TimerConfig::default().frequency(Hertz(SERVO_FREQ_HZ));
+    let timer_config = TimerConfig::new()
+        .frequency(Hertz(SERVO_FREQ_HZ))
+        .resolution(esp_idf_hal::ledc::config::Resolution::Bits14);
     let timer = LedcTimerDriver::new(peripherals.ledc.timer0, &timer_config)?;
     let mut servo = LedcDriver::new(peripherals.ledc.channel0, &timer, peripherals.pins.gpio4)?;
 
