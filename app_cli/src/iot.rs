@@ -33,8 +33,8 @@ impl UdpSender {
     ///
     /// Giao thức 4 byte: `[R, G, B, class_id]`
     /// - `R, G, B`: Mã màu đèn LED cảnh báo
-    /// - `class_id`: Chỉ số loài muỗi (0..35), ESP32 sẽ xoay servo đến góc `class_id * 10`
-    ///   Giá trị đặc biệt `0xFF` = không phát hiện → tắt LED, servo giữ nguyên.
+    /// - `class_id`: Chỉ `0xFF` = không phát hi số loài muỗi (0..35), ESP32 sẽ xoay servo đến góc `class_id * 10`
+    ///   Giá trị đặc biệtện → tắt LED, servo giữ nguyên.
     pub fn send_command(&self, r: u8, g: u8, b: u8, class_id: u8) {
         let payload = [r, g, b, class_id];
         // Fire-and-forget: Bắn gói tin và bỏ qua lỗi mạng.
