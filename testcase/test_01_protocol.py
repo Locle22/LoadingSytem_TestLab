@@ -1,94 +1,112 @@
 # tests/test_01_protocol.py
 import pytest
 import time
+import random
 
-# Opcode Commands (Đồng bộ với C++ ESP32)
-CMD_HOME = 0x02
+# Định nghĩa các hằng số
+CMD_MOVE_TO = 0x01
 CMD_GET_STATUS = 0x08
-STATUS_NOT_READY = 0x04
+STATUS_ALARM = 0x03
+ALARM_ENCODER_ERR = 0x05
 
-def test_tc1_1_happy_case(esp32):
-    """
-    TC1.1 - Truyền nhận gói tin tiêu chuẩn (Happy Case).
-    Gửi lệnh GET_STATUS hợp lệ, mong đợi phản hồi chuẩn checksum.
-    """
-    # 1. Reset input buffer
+
+# ====================================================================
+# TC1.1: CHECKSUM FUZZING (Tự động sinh 50 gói tin hỏng ngẫu nhiên)
+# ====================================================================
+# Tạo danh sách 50 bộ số ngẫu nhiên (Lệnh, Param1, Sequence)
+FUZZING_DATA = [
+    (random.randint(1, 8), random.randint(0, 255), random.randint(0, 255))
+    for _ in range(50)
+]
+
+@pytest.mark.parametrize("cmd, p1, seq", FUZZING_DATA)
+def test_tc1_1_checksum_fuzzing(esp32, cmd, p1, seq):
+    """Bắn phá Parser bằng 50 gói tin sai checksum liên tiếp."""
     esp32.ser.reset_input_buffer()
     
-    # 2. Build gói tin hợp lệ, seq = 0x01
-    packet = esp32.build_packet(cmd=CMD_GET_STATUS, seq=0x01)
+    # Đóng gói nhưng bật cờ corrupt_checksum = True
+    packet = esp32.build_packet(cmd=cmd, p1=p1, seq=seq, corrupt_chk=True)
     esp32.send_raw(packet)
     
-    # 3. Đọc phản hồi
-    resp = esp32.read_response()
+    resp = esp32.read_response(timeout=0.05) # Timeout siêu ngắn
     
-    # 4. Asserts (Kỳ vọng)
-    assert resp is not None, "Lỗi: ESP32 không phản hồi (Timeout)"
-    assert resp["valid_checksum"] is True, "Lỗi: ESP32 gửi lên sai Checksum"
-    assert resp["seq"] == 0x01, "Lỗi: Sai số Sequence (Không đồng bộ)"
-    # Vì hệ thống vừa mới boot, trạng thái mặc định phải là NOT_READY
-    assert resp["status"] == STATUS_NOT_READY, f"Lỗi: Trạng thái sai, nhận được {resp['status']}"
+    # Assert: ESP32 tuyệt đối không được phản hồi các gói tin rác này
+    assert resp is None, f"LỖI BẢO MẬT: Lọt lưới gói tin hỏng! Lệnh: {hex(cmd)}"
 
 
-def test_tc1_2_bad_checksum(esp32):
-    """
-    TC1.2 - Lọc gói tin sai Checksum (Data Corruption).
-    Cố tình gửi sai byte Checksum, mong đợi ESP32 hủy lệnh và không phản hồi.
-    """
-    esp32.ser.reset_input_buffer()
-    
-    # Tạo lệnh CMD_HOME nhưng cố tình tính sai checksum
-    packet = esp32.build_packet(cmd=CMD_HOME, corrupt_checksum=True)
-    esp32.send_raw(packet)
-    
-    # Do ESP32 sẽ drop gói tin này, hàm read_response sẽ bị timeout và trả về None
-    resp = esp32.read_response()
-    
-    assert resp is None, "Lỗi: ESP32 vẫn phản hồi dù gói tin bị sai Checksum!"
+# ====================================================================
+# TC1.2: HEADER COLLISION (Tiêm Header vào giữa luồng Payload)
+# ====================================================================
+# Các trường hợp Payload chứa byte 0xAA (giống hệt Header)
+COLLISION_MATRIX = [
+    (0xAA, 0x00, 0x00, 0x00), # 0xAA nằm ở Param 1
+    (0x00, 0xAA, 0x00, 0x00), # 0xAA nằm ở Param 2
+    (0x00, 0x00, 0xAA, 0x00), # 0xAA nằm ở Data Low
+    (0xAA, 0xAA, 0xAA, 0xAA), # Toàn bộ Payload đều là 0xAA
+]
 
-
-def test_tc1_3_alignment_recovery(esp32):
-    """
-    TC1.3 - Khôi phục đồng bộ Header (Alignment Recovery).
-    Bơm rác dữ liệu trước khi gửi gói tin chuẩn.
-    """
-    esp32.ser.reset_input_buffer()
+@pytest.mark.parametrize("p1, p2, d_lo, d_hi", COLLISION_MATRIX)
+def test_tc1_2_header_collision(esp32, p1, p2, d_lo, d_hi):
+    """Kiểm tra parser có bị nhầm lẫn điểm bắt đầu của Frame không."""
+    esp32.force_state(0x00) # Đưa về IDLE an toàn
     
-    # 1. Bơm rác (Junk data)
-    junk_data = b'\xFF\x00\x3B\x55\x12'
-    esp32.send_raw(junk_data)
-    
-    # 2. Gửi lệnh chuẩn ngay lập tức (không delay)
-    packet = esp32.build_packet(cmd=CMD_GET_STATUS, seq=0x03)
-    esp32.send_raw(packet)
-    
-    # 3. Đọc phản hồi
-    resp = esp32.read_response()
-    
-    assert resp is not None, "Lỗi: ESP32 bị kẹt do rác dữ liệu, không thể phục hồi luồng"
-    assert resp["valid_checksum"] is True
-    assert resp["seq"] == 0x03, "Lỗi: Phục hồi luồng nhưng sai dữ liệu lệnh"
-
-
-def test_tc1_4_buffer_overflow_prevention(esp32):
-    """
-    TC1.4 - Ngăn chặn tràn bộ đệm (Buffer Overflow).
-    Gửi luồng dữ liệu cực lớn, sau đó xem ESP32 còn sống không.
-    """
-    esp32.ser.reset_input_buffer()
-    
-    # 1. Gửi 128 byte rác liên tục
-    heavy_junk = b'\x00' * 128
-    esp32.send_raw(heavy_junk)
-    
-    # Cần chờ một chút cho ESP32 parse xong đống rác này
-    time.sleep(0.2) 
-    
-    # 2. Gửi lệnh sống còn (Heartbeat)
-    packet = esp32.build_packet(cmd=CMD_GET_STATUS, seq=0x99)
+    packet = esp32.build_packet(cmd=CMD_MOVE_TO, p1=p1, p2=p2, d_lo=d_lo, d_hi=d_hi, seq=0x77)
     esp32.send_raw(packet)
     
     resp = esp32.read_response()
     
-    assert resp is not None, "Lỗi: ESP32 đã bị Crash hoặc Tràn bộ nhớ (Buffer Overflow)!"
-    assert resp["seq"] == 0x99, "Lỗi: Sống sót nhưng xử lý sai sequence"
+    assert resp is not None, "LỖI: ESP32 crash do xử lý Payload chứa 0xAA"
+    assert resp["seq"] == 0x77, "LỖI: Trôi Sequence"
+    
+    # Vì P1 = 0xAA (170) vượt quá số lọ (9), ESP32 phải văng lỗi ALARM thay vì hiểu nhầm
+    if p1 >= 10:
+        assert resp["status"] == STATUS_ALARM
+        assert resp["alarm"] == ALARM_ENCODER_ERR
+
+
+# ====================================================================
+# TC1.3: PACKET FRAGMENTATION & TIMEOUT (Phân mảnh gói tin)
+# ====================================================================
+def test_tc1_3_fragmentation_success(esp32):
+    """Gửi 3 byte, chờ 50ms, gửi 5 byte còn lại -> Phải ghép thành công."""
+    esp32.ser.reset_input_buffer()
+    packet = esp32.build_packet(cmd=CMD_GET_STATUS, seq=0x1A)
+    
+    # Chia làm 2 chunk: 3 byte và 5 byte. Delay 50ms (Nằm trong ngưỡng an toàn)
+    esp32.send_fragmented(packet, chunks=[3, 5], delay=0.05)
+    
+    resp = esp32.read_response()
+    assert resp is not None and resp["seq"] == 0x1A, "LỖI: Không thể ghép mảnh gói tin!"
+
+def test_tc1_3_buffer_timeout_drop(esp32):
+    """Gửi 4 byte, chờ quá lâu (500ms), ESP32 phải tự hủy buffer để chống kẹt."""
+    esp32.ser.reset_input_buffer()
+    packet = esp32.build_packet(cmd=CMD_GET_STATUS, seq=0x1B)
+    
+    # Chia làm 2 chunk: 4 byte và 4 byte. Delay 500ms (Vượt timeout của vi điều khiển)
+    esp32.send_fragmented(packet, chunks=[4, 4], delay=0.5)
+    
+    resp = esp32.read_response(timeout=0.2)
+    # Lệnh này phải bị ESP32 drop vì timeout
+    assert resp is None, "LỖI: Mạch bị kẹt Buffer lock, không chịu timeout dữ liệu cũ!"
+
+
+# ====================================================================
+# TC1.4: SEQUENCE WRAP-AROUND (Tràn biến đếm)
+# ====================================================================
+# Test chuỗi sequence liên tục vượt qua giới hạn uint8 (255 -> 0)
+@pytest.mark.parametrize("seq_stream", [
+    [253, 254, 255, 0, 1, 2], # Wrap around chuẩn
+    [10, 10, 10],             # Gửi trùng lặp do mạng nhiễu
+])
+def test_tc1_4_sequence_validation(esp32, seq_stream):
+    """Kiểm tra xử lý đồng bộ chuỗi Sequence"""
+    esp32.ser.reset_input_buffer()
+    
+    for s in seq_stream:
+        packet = esp32.build_packet(cmd=CMD_GET_STATUS, seq=s)
+        esp32.send_raw(packet)
+        resp = esp32.read_response()
+        
+        assert resp is not None
+        assert resp["seq"] == s, f"LỖI ĐỒNG BỘ: RPi gửi {s}, ESP32 trả {resp['seq']}"
