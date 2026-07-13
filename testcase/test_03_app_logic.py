@@ -1,41 +1,74 @@
 # tests/test_03_app_logic.py
 import pytest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
-# Giả định chúng ta import module (rpi_serial_controller)
+# --- Hằng số ---
+CMD_MOVE_TO = 0x01
+STATUS_MOVING = 0x01
+STATUS_ALARM = 0x03
+ALARM_ENCODER_ERR = 0x05
 CONF_THRESHOLD = 0.85
 
+# Hàm giả lập (Mô phỏng logic của rpi_serial_controller.py)
 def process_ai_detection(mock_serial_ctrl, confidence, species_id):
-    """
-    Đây là hàm mô phỏng đoạn logic if/else trong vòng lặp chính của rpi_serial_controller.py
-    """
     if confidence < CONF_THRESHOLD:
-        print(f"Confidence thấp ({confidence}) -> BỎ QUA")
         return False
-    else:
-        print(f"Xoay đĩa đến lọ {species_id}...")
-        # Gửi lệnh Move To
-        mock_serial_ctrl.send_cmd(0x01, param1=species_id)
-        return True
+    mock_serial_ctrl.send_cmd(CMD_MOVE_TO, param1=species_id)
+    return True
 
 
-def test_tc3_2_ai_noise_filtering():
-    """
-    TC3.2 - Lọc nhiễu AI bằng ngưỡng Confidence.
-    """
-    # Tạo một Mock object đại diện cho kết nối Serial
+# ====================================================================
+# TC3.1: GIÁ TRỊ BIÊN NGƯỠNG TIN CẬY AI (AI CONFIDENCE BVA)
+# ====================================================================
+# Test sát sườn độ chính xác Float để tránh sai số dấu phẩy động
+AI_BOUNDARIES = [
+    (0.0, False),
+    (0.8499, False), # Ngay dưới biên -> Bỏ qua
+    (0.8500, True),  # Ngay tại biên -> Chấp nhận
+    (0.8501, True),  # Ngay trên biên -> Chấp nhận
+    (1.0, True)
+]
+
+@pytest.mark.parametrize("confidence, expected_trigger", AI_BOUNDARIES)
+def test_tc3_1_ai_confidence_boundaries(confidence, expected_trigger):
+    """Test bộ lọc AI của Python bằng Mocking (Không cần phần cứng thật)"""
     mock_serial = MagicMock()
     
-    # 1. Test trường hợp Confidence THẤP (Ví dụ: 0.80) -> Bị bỏ qua
-    is_triggered = process_ai_detection(mock_serial, confidence=0.80, species_id=3)
+    is_triggered = process_ai_detection(mock_serial, confidence, species_id=3)
     
-    assert is_triggered is False, "Lỗi: AI vẫn nhận diện dù Confidence dưới ngưỡng an toàn!"
-    # Kiểm tra xem send_cmd có bị gọi xuống Serial không? Kỳ vọng là KHÔNG gọi.
-    mock_serial.send_cmd.assert_not_called()
+    assert is_triggered == expected_trigger
+    if expected_trigger:
+        mock_serial.send_cmd.assert_called_once_with(CMD_MOVE_TO, param1=3)
+    else:
+        mock_serial.send_cmd.assert_not_called()
 
-    # 2. Test trường hợp Confidence CAO (Ví dụ: 0.95) -> Chấp nhận
-    is_triggered_2 = process_ai_detection(mock_serial, confidence=0.95, species_id=4)
+
+# ====================================================================
+# TC3.2: GIÁ TRỊ BIÊN TỌA ĐỘ VẬT LÝ (HARDWARE TARGET BOUNDARIES)
+# ====================================================================
+# [0, 1, 8, 9] là hợp lệ. [10, 15, 255] là vượt biên (Lưu ý: -1 byte = 255)
+HW_BOUNDARIES = [
+    (0, STATUS_MOVING, None),
+    (1, STATUS_MOVING, None),
+    (8, STATUS_MOVING, None),
+    (9, STATUS_MOVING, None),
+    (10, STATUS_ALARM, ALARM_ENCODER_ERR),
+    (15, STATUS_ALARM, ALARM_ENCODER_ERR),
+    (255, STATUS_ALARM, ALARM_ENCODER_ERR),
+]
+
+@pytest.mark.parametrize("target_jar, expected_status, expected_alarm", HW_BOUNDARIES)
+def test_tc3_2_hardware_target_boundaries(esp32, target_jar, expected_status, expected_alarm):
+    """Bắn trực tiếp tọa độ biên xuống ESP32 để xem phần cứng có bị lỗi Mảng không"""
+    esp32.force_state(0x00) # Trở về IDLE
+    esp32.ser.reset_input_buffer()
     
-    assert is_triggered_2 is True
-    # Kiểm tra xem send_cmd ĐÃ được gọi với đúng target_jar = 4 chưa
-    mock_serial.send_cmd.assert_called_with(0x01, param1=4)
+    packet = esp32.build_packet(cmd=CMD_MOVE_TO, p1=target_jar, seq=0xCC)
+    esp32.send_raw(packet)
+    
+    resp = esp32.read_response()
+    
+    assert resp is not None, "LỖI: ESP32 Crash khi nhận tọa độ biên!"
+    assert resp["status"] == expected_status
+    if expected_alarm:
+        assert resp["alarm"] == expected_alarm
