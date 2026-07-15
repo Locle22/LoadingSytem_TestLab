@@ -154,9 +154,12 @@ async function fetchSpeciesList() {
         opt.textContent = `[ID ${sp.class_id}] ${sp.name}`;
         speciesSelect.appendChild(opt);
       });
+    } else {
+      speciesSelect.innerHTML = `<option value="">-- Lỗi tải (HTTP ${response.status}) --</option>`;
     }
   } catch (error) {
     console.error('Failed to fetch species list:', error);
+    speciesSelect.innerHTML = `<option value="">-- Lỗi kết nối: ${error.message} --</option>`;
   }
 }
 
