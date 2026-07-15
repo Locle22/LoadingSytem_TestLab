@@ -1,6 +1,8 @@
 import './style.css';
 
-const API_BASE = 'http://localhost:3000/api';
+const API_BASE = window.location.port === '5173' 
+  ? 'http://localhost:3000/api' 
+  : '/api';
 
 // State lưu trữ cục bộ
 let speciesList = [];

@@ -181,6 +181,8 @@ pub fn start_server(backend: Arc<dyn HardwareBackend>, is_simulation_mode: Arc<A
         .allow_methods(Any)
         .allow_headers(Any);
 
+    use tower_http::services::ServeDir;
+
     let app = Router::new()
         .route("/api/status", get(get_status))
         .route("/api/mode/simulation", post(set_simulation_mode))
@@ -192,6 +194,7 @@ pub fn start_server(backend: Arc<dyn HardwareBackend>, is_simulation_mode: Arc<A
         .route("/api/move_slot_to_slot", post(post_move_slot_to_slot))
         .route("/api/simulate_mosquito", post(post_simulate_mosquito))
         .route("/api/species_list", get(get_species_list))
+        .fallback_service(ServeDir::new("web_ui/dist"))
         .layer(cors)
         .with_state(state);
 
