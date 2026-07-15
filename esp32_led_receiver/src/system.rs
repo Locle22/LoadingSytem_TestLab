@@ -68,6 +68,19 @@ pub fn run() -> anyhow::Result<()> {
     }
     info!("WiFi Connected!");
 
+    // Spawning background thread for UDP broadcast beacon (auto-discovery)
+    if let Ok(beacon_socket) = UdpSocket::bind("0.0.0.0:0") {
+        let _ = beacon_socket.set_broadcast(true);
+        thread::spawn(move || {
+            let broadcast_addr = "255.255.255.255:8889";
+            let payload = b"mosquito-sorter-beacon";
+            loop {
+                let _ = beacon_socket.send_to(payload, broadcast_addr);
+                thread::sleep(Duration::from_secs(1));
+            }
+        });
+    }
+
     // ── 2. Cấu hình Đèn LED WS2812 (Chân 48) ──
     let led_pin = peripherals.pins.gpio48;
     let channel = peripherals.rmt.channel0;

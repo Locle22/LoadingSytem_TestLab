@@ -135,3 +135,38 @@ impl HardwareBackend for PlcBackend {
         self.current_angle.load(Ordering::SeqCst)
     }
 }
+
+// ──────────────────────────────────────────────
+//  DisconnectedBackend — Chế độ mất kết nối ESP32
+// ──────────────────────────────────────────────
+
+/// Backend dự phòng khi không thể kết nối tới ESP32 S3 thật.
+pub struct DisconnectedBackend {
+    current_angle: AtomicI32,
+}
+
+impl DisconnectedBackend {
+    pub fn new() -> Self {
+        println!("  ⚠ Chế độ điều khiển phần cứng tạm thời VÔ HIỆU HÓA do mất kết nối ESP32 S3.");
+        Self {
+            current_angle: AtomicI32::new(0),
+        }
+    }
+}
+
+impl HardwareBackend for DisconnectedBackend {
+    fn name(&self) -> &str {
+        "ESP32 S3 (Mất kết nối)"
+    }
+
+    fn send_mosquito_command(&self, _r: u8, _g: u8, _b: u8, _class_id: u8) {}
+
+    fn rotate_servo(&self, _angle: i32) {}
+
+    fn reset_home(&self) {}
+
+    fn get_current_angle(&self) -> i32 {
+        self.current_angle.load(Ordering::SeqCst)
+    }
+}
+

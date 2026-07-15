@@ -146,13 +146,36 @@ fn run() -> Result<()> {
     let backend: Arc<dyn HardwareBackend> = if cli.plc {
         Arc::new(crate::hardware::PlcBackend::new())
     } else {
-        // Tự động sử dụng mDNS hostname "mosquito-sorter.local" nếu người dùng không truyền IP
         let ip_or_host = cli.esp_ip.as_deref().unwrap_or("mosquito-sorter.local");
-        eprintln!("  ⏳ Khai bao backend ESP32 tai {}:8888...", ip_or_host);
-        let b = crate::hardware::Esp32Backend::new(ip_or_host, 8888)
-            .with_context(|| format!("Failed to initialize ESP32 Backend at {}", ip_or_host))?;
-        eprintln!("  ✔ ESP32 IoT Backend: ACTIVE");
-        Arc::new(b)
+        
+        let resolved_ip = if ip_or_host == "mosquito-sorter.local" {
+            // Thử mDNS trước
+            if let Some(ip) = try_resolve_mdns(ip_or_host, 8888) {
+                Some(ip)
+            } else {
+                // Nếu mDNS thất bại, thử UDP Broadcast dò tìm IP tự động
+                discover_esp32_ip(Duration::from_secs(2))
+            }
+        } else {
+            // Dùng IP do người dùng chủ động điền
+            Some(ip_or_host.to_string())
+        };
+
+        if let Some(ip) = resolved_ip {
+            eprintln!("  ⏳ Khai bao backend ESP32 tai {}:8888...", ip);
+            match crate::hardware::Esp32Backend::new(&ip, 8888) {
+                Ok(b) => {
+                    eprintln!("  ✔ ESP32 IoT Backend: ACTIVE");
+                    Arc::new(b)
+                }
+                Err(e) => {
+                    eprintln!("  ✖ Loi khoi tao ket noi ESP32: {}", e);
+                    Arc::new(crate::hardware::DisconnectedBackend::new())
+                }
+            }
+        } else {
+            Arc::new(crate::hardware::DisconnectedBackend::new())
+        }
     };
 
     let is_simulation_mode = Arc::new(AtomicBool::new(false));
@@ -447,3 +470,44 @@ fn print_results(detections: &[ai_vision::types::Detection]) {
 
     println!("{bottom}");
 }
+
+// ──────────────────────────────────────────────
+//  Auto-Discovery Helpers
+// ──────────────────────────────────────────────
+
+fn try_resolve_mdns(hostname: &str, port: u16) -> Option<String> {
+    use std::net::ToSocketAddrs;
+    let addr = format!("{}:{}", hostname, port);
+    if let Ok(mut addrs) = addr.to_socket_addrs() {
+        if let Some(socket_addr) = addrs.next() {
+            let ip = socket_addr.ip().to_string();
+            eprintln!("  ✔ Da phan giai mDNS '{}' thanh IP: {}", hostname, ip);
+            return Some(ip);
+        }
+    }
+    None
+}
+
+fn discover_esp32_ip(timeout: Duration) -> Option<String> {
+    use std::net::UdpSocket;
+    eprintln!("  ⏳ Dang do tim thiet bi ESP32 S3 trong mang LAN qua UDP Broadcast (Port 8889)...");
+    let socket = UdpSocket::bind("0.0.0.0:8889").ok()?;
+    socket.set_read_timeout(Some(timeout)).ok()?;
+
+    let mut buf = [0u8; 64];
+    match socket.recv_from(&mut buf) {
+        Ok((size, src_addr)) => {
+            let msg = String::from_utf8_lossy(&buf[..size]);
+            if msg == "mosquito-sorter-beacon" {
+                let ip = src_addr.ip().to_string();
+                eprintln!("  ✔ Da tu dong phat hien ESP32 tai IP: {}", ip);
+                return Some(ip);
+            }
+        }
+        Err(_) => {
+            eprintln!("  ⚠ Het thoi gian cho (Timeout) - Khong nhan duoc tin hieu UDP Broadcast tu ESP32.");
+        }
+    }
+    None
+}
+
