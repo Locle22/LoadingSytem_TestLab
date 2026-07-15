@@ -1,6 +1,6 @@
 import './style.css';
 
-const API_BASE = window.location.port === '5173' 
+const API_BASE = window.location.port !== '3000' 
   ? 'http://localhost:3000/api' 
   : '/api';
 
