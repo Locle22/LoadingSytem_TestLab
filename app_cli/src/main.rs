@@ -19,13 +19,13 @@ use std::sync::{Arc, RwLock};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 use std::time::{Duration, Instant};
+use std::io::{self, Write};
 
 use anyhow::{Context, Result};
 use clap::Parser;
 use minifb::{Key, Window, WindowOptions};
 
 use ai_vision::draw::draw_detections;
-use ai_vision::stream::MjpegStream;
 use ai_vision::{ComputeDevice, YoloDetector};
 
 use crate::iot::{get_species_color, CLASS_ID_NONE};
@@ -55,7 +55,11 @@ struct Cli {
     #[arg(short, long)]
     camera: Option<String>,
 
-    /// ESP32 S3 IP Address to send UDP color commands (e.g., 192.168.1.10)
+    /// Số thứ tự cổng USB Camera cắm dây (Microscope Camera)
+    #[arg(long)]
+    usb_cam: Option<u32>,
+
+    /// ESP32 S3 IP Address or Hostname (e.g., mosquito-sorter.local)
     #[arg(long)]
     esp_ip: Option<String>,
 
@@ -90,10 +94,6 @@ fn main() {
 fn run() -> Result<()> {
     let cli = Cli::parse();
 
-    if cli.image.is_none() && cli.camera.is_none() {
-        anyhow::bail!("You must specify either --image or --camera.");
-    }
-
     // ── Parse device string ────────────────────────────────────────
     let device = parse_device(&cli.device)
         .with_context(|| format!("Invalid --device value '{}'", cli.device))?;
@@ -104,14 +104,53 @@ fn run() -> Result<()> {
         .with_context(|| "Failed to initialise YoloDetector")?;
     eprintln!("  ✔ Model loaded successfully.\n");
 
+    // ── Lựa chọn nguồn Video (DroidCam vs USB Camera) ──────────────
+    let mut camera_url = cli.camera.clone();
+    let mut usb_cam_index = cli.usb_cam;
+
+    if cli.image.is_none() && camera_url.is_none() && usb_cam_index.is_none() {
+        println!("=====================================================");
+        println!("          CHON NGUON CAMERA CUA BAN");
+        println!("=====================================================");
+        println!("  [1] Su dung DroidCam IP Camera (Ket noi qua WiFi)");
+        println!("  [2] Su dung Kinh hien vi / Camera USB cam day");
+        println!("-----------------------------------------------------");
+        print!("Moi nhap lua chon (1 hoac 2, mac dinh la 1): ");
+        io::stdout().flush().unwrap();
+
+        let mut choice = String::new();
+        io::stdin().read_line(&mut choice).unwrap();
+        let choice = choice.trim();
+
+        if choice == "2" {
+            print!("Nhap chi so cong USB Camera (Mac dinh: 0): ");
+            io::stdout().flush().unwrap();
+            let mut cam_idx_str = String::new();
+            io::stdin().read_line(&mut cam_idx_str).unwrap();
+            let cam_idx: u32 = cam_idx_str.trim().parse().unwrap_or(0);
+            usb_cam_index = Some(cam_idx);
+            println!("  -> Da chon USB Camera (Index {})", cam_idx);
+        } else {
+            print!("Nhap IP cua DroidCam (Mac dinh: 192.168.1.5): ");
+            io::stdout().flush().unwrap();
+            let mut ip = String::new();
+            io::stdin().read_line(&mut ip).unwrap();
+            let ip = ip.trim();
+            let final_ip = if ip.is_empty() { "192.168.1.5" } else { ip };
+            camera_url = Some(format!("http://{}:4747/video", final_ip));
+            println!("  -> Da chon DroidCam: {}", camera_url.as_ref().unwrap());
+        }
+    }
+
     // ── Khởi tạo Hardware Backend (Tầng 2) ────────────────────────
     let backend: Arc<dyn HardwareBackend> = if cli.plc {
         Arc::new(crate::hardware::PlcBackend::new())
     } else {
-        let ip = cli.esp_ip.as_deref().unwrap_or("192.168.1.56");
-        eprintln!("  ⏳ Khởi tạo backend ESP32 S3 tại {}:8888...", ip);
-        let b = crate::hardware::Esp32Backend::new(ip, 8888)
-            .with_context(|| "Failed to initialize ESP32 Backend")?;
+        // Tự động sử dụng mDNS hostname "mosquito-sorter.local" nếu người dùng không truyền IP
+        let ip_or_host = cli.esp_ip.as_deref().unwrap_or("mosquito-sorter.local");
+        eprintln!("  ⏳ Khai bao backend ESP32 tai {}:8888...", ip_or_host);
+        let b = crate::hardware::Esp32Backend::new(ip_or_host, 8888)
+            .with_context(|| format!("Failed to initialize ESP32 Backend at {}", ip_or_host))?;
         eprintln!("  ✔ ESP32 IoT Backend: ACTIVE");
         Arc::new(b)
     };
@@ -119,7 +158,6 @@ fn run() -> Result<()> {
     let is_simulation_mode = Arc::new(AtomicBool::new(false));
 
     // ── Khởi chạy HTTP API Server cho Web UI (Tầng 3) ──────────────
-    // Khởi tạo Tokio Multi-thread runtime để chạy web server dưới nền
     let rt = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()?;
@@ -127,28 +165,27 @@ fn run() -> Result<()> {
 
     crate::web_server::start_server(Arc::clone(&backend), Arc::clone(&is_simulation_mode), 3000);
 
-    if let Some(url) = &cli.camera {
-        run_realtime(&detector, url, backend, is_simulation_mode)?;
-    } else if let Some(image_path) = &cli.image {
+    if let Some(image_path) = &cli.image {
         run_single_image(&detector, image_path)?;
+    } else {
+        run_realtime(&detector, camera_url, usb_cam_index, backend, is_simulation_mode)?;
     }
 
     Ok(())
 }
 
 // ──────────────────────────────────────────────
-//  Real-time Mode (DroidCam)
+//  Real-time Mode (DroidCam / USB Camera)
 // ──────────────────────────────────────────────
 
 fn run_realtime(
     detector: &YoloDetector,
-    url: &str,
+    camera_url: Option<String>,
+    usb_cam_index: Option<u32>,
     backend: Arc<dyn HardwareBackend>,
     is_simulation_mode: Arc<AtomicBool>,
 ) -> Result<()> {
-    eprintln!("  ⏳ Connecting to DroidCam: {}", url);
-    let mut stream = MjpegStream::new(url).with_context(|| "Failed to connect to IP Camera")?;
-    eprintln!("  ✔ Connected! Press ESC to exit.");
+    eprintln!("  ✔ Dang khoi dong luong Camera. Nhan ESC tren cua so de thoat.");
 
     // Shared State between threads
     let shared_frame = Arc::new(RwLock::new(None::<image::DynamicImage>));
@@ -156,13 +193,36 @@ fn run_realtime(
 
     let is_running = Arc::new(RwLock::new(true));
 
-    // ── Thread 1: Camera (Network Fetcher) ──
+    // ── Thread 1: Camera (Fetcher Thread) ──
     let frame_clone = Arc::clone(&shared_frame);
     let running_clone = Arc::clone(&is_running);
+    
+    // Nokhwa Camera không phai type Send, do do ta khoi tao truc tiep ben trong thread 
+    // de khong can phai truyen object qua bien gioi thread
     thread::spawn(move || {
+        let mut stream = if let Some(url) = &camera_url {
+            match ai_vision::stream::MjpegStream::new(url) {
+                Ok(mjpeg) => ai_vision::stream::VideoStream::Mjpeg(mjpeg),
+                Err(e) => {
+                    eprintln!("  ✖ Loi ket noi DroidCam: {:?}", e);
+                    return;
+                }
+            }
+        } else if let Some(index) = usb_cam_index {
+            match ai_vision::stream::new_webcam(index) {
+                Ok(cam) => ai_vision::stream::VideoStream::Webcam(Box::new(cam)),
+                Err(e) => {
+                    eprintln!("  ✖ Loi mo USB Camera: {:?}", e);
+                    return;
+                }
+            }
+        } else {
+            return;
+        };
+
         while *running_clone.read().unwrap() {
             if let Ok(frame) = stream.next_frame() {
-                // Instantly update the latest frame, dropping the old one
+                // Ghi de khung hinh moi nhat vao buffer chia se
                 *frame_clone.write().unwrap() = Some(frame);
             }
         }
@@ -193,19 +253,17 @@ fn run_realtime(
                     if let Some(frame) = frame_opt {
                         // Run AI without blocking the network or UI
                         if let Ok(detections) = detector.detect_image(&frame) {
-                            // In kết quả ra Serial / Terminal
                             if !detections.is_empty() {
                                 let species_list: Vec<String> = detections
                                     .iter()
                                     .map(|d| format!("{} ({:.0}%)", d.class_name, d.confidence * 100.0))
                                     .collect();
-                                println!("🦟 Đã phát hiện: {}", species_list.join(", "));
+                                println!("🦟 Da phat hien: {}", species_list.join(", "));
 
                                 // Chỉ gửi lệnh tự động nếu KHÔNG ở chế độ mô phỏng
                                 if !sim_mode_clone.load(Ordering::SeqCst) {
                                     if last_action_time.elapsed() >= action_cooldown {
                                         last_action_time = Instant::now();
-                                        // Lấy loài có độ tin cậy cao nhất
                                         let best_match = &detections[0];
                                         let class_id = best_match.class_id as u8;
                                         let (r, g, b) = get_species_color(class_id);
@@ -234,15 +292,15 @@ fn run_realtime(
         });
 
         // ── Thread 3: UI Loop (Main Thread) ──
-        // Đợi khung hình đầu tiên để tự động khớp độ phân giải gốc của DroidCam
+        // Đợi khung hình đầu tiên để tự động khớp độ phân giải
         let mut initial_w = 640;
         let mut initial_h = 480;
-        eprintln!("  ⏳ Đang lấy độ phân giải từ DroidCam...");
+        eprintln!("  ⏳ Dang lay do phan giai camera...");
         while *is_running.read().unwrap() {
             if let Some(frame) = shared_frame.read().unwrap().as_ref() {
                 initial_w = frame.width() as usize;
                 initial_h = frame.height() as usize;
-                eprintln!("  ✔ Độ phân giải luồng video: {}x{}", initial_w, initial_h);
+                eprintln!("  ✔ Do phan giai camera: {}x{}", initial_w, initial_h);
                 break;
             }
             thread::sleep(Duration::from_millis(100));

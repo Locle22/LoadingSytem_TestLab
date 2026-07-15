@@ -14,6 +14,7 @@ use ws2812_esp32_rmt_driver::Ws2812Esp32Rmt;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use mfrc522::Mfrc522;
+use esp_idf_svc::handle::RawHandle;
 
 use crate::servo::ContinuousServo;
 use crate::sorter::Sorter;
@@ -49,6 +50,14 @@ pub fn run() -> anyhow::Result<()> {
         auth_method: AuthMethod::WPA2Personal,
         ..Default::default()
     }))?;
+
+    // Thiết lập hostname để tự động phân giải mosquito-sorter.local trên máy tính
+    let hostname = std::ffi::CString::new("mosquito-sorter").unwrap();
+    unsafe {
+        let netif = wifi.sta_netif();
+        let netif_ptr = netif.handle();
+        let _ = esp_idf_sys::esp_netif_set_hostname(netif_ptr, hostname.as_ptr());
+    }
 
     wifi.start()?;
     wifi.connect()?;

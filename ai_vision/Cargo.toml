@@ -13,6 +13,7 @@ reqwest = { version = "0.12", features = ["blocking"] }
 minifb = "0.27"
 imageproc = "0.25"
 ab_glyph = "0.2"
+nokhwa = { version = "0.10.4", features = ["input-native"] }
 
 [features]
 default = []

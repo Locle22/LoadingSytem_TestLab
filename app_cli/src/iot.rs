@@ -1,4 +1,4 @@
-use std::net::UdpSocket;
+use std::net::{UdpSocket, SocketAddr};
 
 // ──────────────────────────────────────────────
 //  Giao thức UDP: [R, G, B, class_id] — 4 bytes
@@ -10,17 +10,22 @@ pub const CLASS_ID_NONE: u8 = 0xFF;
 /// Giao thức gửi gói tin UDP không chờ (Non-blocking UDP Sender)
 pub struct UdpSender {
     socket: UdpSocket,
-    target_addr: String,
+    target_addr: SocketAddr,
 }
 
 impl UdpSender {
     /// Khởi tạo kết nối đến ESP32 S3.
-    /// `ip`: Địa chỉ IP của ESP32 (vd: "192.168.1.10")
+    /// `ip`: Địa chỉ IP hoặc Hostname của ESP32 (vd: "mosquito-sorter.local")
     pub fn new(ip: &str, port: u16) -> anyhow::Result<Self> {
         let socket = UdpSocket::bind("0.0.0.0:0")?; // Bind ngẫu nhiên 1 port của hệ điều hành
         socket.set_nonblocking(true)?; // Quan trọng: Đảm bảo không block Thread AI
 
-        let target_addr = format!("{}:{}", ip, port);
+        use std::net::ToSocketAddrs;
+        let addr_str = format!("{}:{}", ip, port);
+        let target_addr = addr_str.to_socket_addrs()?
+            .next()
+            .ok_or_else(|| anyhow::anyhow!("Không thể phân giải địa chỉ: {}", addr_str))?;
+
         Ok(Self {
             socket,
             target_addr,

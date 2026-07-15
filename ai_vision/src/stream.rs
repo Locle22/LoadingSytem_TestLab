@@ -1,6 +1,12 @@
 use std::io::Read;
 use crate::types::DetectorError;
 
+use nokhwa::{
+    pixel_format::RgbFormat,
+    utils::{CameraIndex, RequestedFormat, RequestedFormatType},
+    Camera,
+};
+
 /// Trình đọc luồng MJPEG từ IP Camera.
 pub struct MjpegStream {
     reader: reqwest::blocking::Response,
@@ -67,15 +73,13 @@ impl MjpegStream {
 
                 return Ok(img);
             } else if start_idx.is_none() && !self.buffer.is_empty() {
-                // Tối ưu bộ nhớ: nếu không thấy SOI, xóa sạch buffer (Rác HTTP headers)
-                // Nhưng chừa lại 1 byte cuối phòng hờ SOI bị cắt đôi
                 if self.buffer.len() > 1 {
                     let last = self.buffer.len() - 1;
                     self.buffer.drain(0..last);
                 }
             }
 
-            // Đọc thêm dữ liệu vào mạng nếu chưa đủ 1 frame
+            // Đọc thêm dữ liệu từ mạng nếu chưa đủ 1 frame
             let n = self
                 .reader
                 .read(&mut chunk)
@@ -89,4 +93,45 @@ impl MjpegStream {
             self.buffer.extend_from_slice(&chunk[..n]);
         }
     }
+}
+
+/// Enum đóng gói toàn bộ luồng luân chuyển video của hệ thống.
+pub enum VideoStream {
+    Mjpeg(MjpegStream),
+    Webcam(Box<Camera>),
+}
+
+impl VideoStream {
+    /// Lấy khung hình tiếp theo (tự động nhận dạng kiểu nguồn).
+    pub fn next_frame(&mut self) -> Result<image::DynamicImage, DetectorError> {
+        match self {
+            VideoStream::Mjpeg(stream) => stream.next_frame(),
+            VideoStream::Webcam(camera) => {
+                let frame = camera.frame().map_err(|e| {
+                    DetectorError::ImageProcessing(format!("Failed to capture USB frame: {e}"))
+                })?;
+                let decoded = frame.decode_image::<RgbFormat>().map_err(|e| {
+                    DetectorError::ImageProcessing(format!("Failed to decode RGB frame: {e}"))
+                })?;
+                
+                let rgb_img: image::RgbImage = decoded;
+                Ok(image::DynamicImage::ImageRgb8(rgb_img))
+            }
+        }
+    }
+}
+
+/// Khởi tạo camera USB cắm trực tiếp (như kính hiển vi USB HDMI Microscope).
+pub fn new_webcam(index: u32) -> Result<Camera, DetectorError> {
+    let index = CameraIndex::Index(index);
+    let requested = RequestedFormat::new::<RgbFormat>(
+        RequestedFormatType::AbsoluteHighestFrameRate
+    );
+    let mut camera = Camera::new(index, requested).map_err(|e| {
+        DetectorError::ImageProcessing(format!("Failed to open USB camera: {e}"))
+    })?;
+    camera.open_stream().map_err(|e| {
+        DetectorError::ImageProcessing(format!("Failed to start USB camera stream: {e}"))
+    })?;
+    Ok(camera)
 }
