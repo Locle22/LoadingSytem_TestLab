@@ -760,6 +760,7 @@ dependencies = [
  "esp-idf-svc",
  "esp-idf-sys",
  "log",
+ "mfrc522",
  "smart-leds",
  "ws2812-esp32-rmt-driver",
 ]
@@ -1204,6 +1205,16 @@ name = "memchr"
 version = "2.8.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "88904434abc2901f197fe8cc55f0445e7ded921dba5911dad2e2b39b48e663c4"
+
+[[package]]
+name = "mfrc522"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "543f2c392f438e427aa9009338710434884b0dc95d0c39110f456846be0aa352"
+dependencies = [
+ "embedded-hal 1.0.0",
+ "heapless",
+]
 
 [[package]]
 name = "minimal-lexical"

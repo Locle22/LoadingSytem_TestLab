@@ -1,5 +1,3 @@
-use std::collections::hash_map::DefaultHasher;
-use std::hash::{Hash, Hasher};
 use std::net::UdpSocket;
 
 // ──────────────────────────────────────────────
@@ -35,9 +33,33 @@ impl UdpSender {
     /// - `R, G, B`: Mã màu đèn LED cảnh báo
     /// - `class_id`: Chỉ `0xFF` = không phát hi số loài muỗi (0..35), ESP32 sẽ xoay servo đến góc `class_id * 10`
     ///   Giá trị đặc biệtện → tắt LED, servo giữ nguyên.
+    /// Gửi lệnh phân loại muỗi bằng Opcode 0x01.
+    /// Giao thức 5 byte: `[0x01, R, G, B, class_id]`
+    pub fn send_opcode_mosquito(&self, r: u8, g: u8, b: u8, class_id: u8) {
+        let payload = [0x01, r, g, b, class_id];
+        let _ = self.socket.send_to(&payload, &self.target_addr);
+    }
+
+    /// Gửi lệnh xoay tuyệt đối bằng Opcode 0x02.
+    /// Giao thức 3 byte: `[0x02, angle_high, angle_low]`
+    pub fn send_opcode_rotate(&self, angle: i32) {
+        let angle_u16 = (angle as i16) as u16;
+        let high = (angle_u16 >> 8) as u8;
+        let low = (angle_u16 & 0xFF) as u8;
+        let payload = [0x02, high, low];
+        let _ = self.socket.send_to(&payload, &self.target_addr);
+    }
+
+    /// Gửi lệnh reset về Home bằng Opcode 0x03.
+    /// Giao thức 1 byte: `[0x03]`
+    pub fn send_opcode_reset(&self) {
+        let payload = [0x03];
+        let _ = self.socket.send_to(&payload, &self.target_addr);
+    }
+
+    /// Gửi lệnh điều khiển LED + Servo sang ESP32 (Giao thức cũ 4-byte).
     pub fn send_command(&self, r: u8, g: u8, b: u8, class_id: u8) {
         let payload = [r, g, b, class_id];
-        // Fire-and-forget: Bắn gói tin và bỏ qua lỗi mạng.
         let _ = self.socket.send_to(&payload, &self.target_addr);
     }
 }

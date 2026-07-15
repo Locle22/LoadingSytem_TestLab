@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Mosquito Sorter Dashboard & Simulator</title>
+    <!-- Google Fonts: Inter & Outfit -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  </head>
+  <body>
+    <div id="app">
+      <!-- Header / Top Bar -->
+      <header class="app-header">
+        <div class="logo-area">
+          <span class="mosquito-icon">🦟</span>
+          <h1>Mosquito Sorter <span class="accent-text">V2</span></h1>
+        </div>
+        <div class="system-status-bar">
+          <div class="status-indicator">
+            <span class="status-label">Trạng thái:</span>
+            <span id="status-mode" class="badge badge-auto">🟢 TỰ ĐỘNG</span>
+          </div>
+          <div class="status-indicator">
+            <span class="status-label">Bộ điều khiển:</span>
+            <span id="status-backend" class="badge badge-backend">ESP32 S3</span>
+          </div>
+          <div class="status-indicator">
+            <span class="status-label">Góc mâm:</span>
+            <span id="status-angle" class="badge badge-angle">0°</span>
+          </div>
+        </div>
+      </header>
+
+      <!-- Main Container Grid -->
+      <main class="dashboard-grid">
+        
+        <!-- Left Side: System Control Mode & Simulation -->
+        <section class="dashboard-card card-primary">
+          <h2 class="card-title">Chế độ vận hành & Mô phỏng</h2>
+          
+          <div class="mode-select-area">
+            <label class="toggle-switch">
+              <input type="checkbox" id="mode-toggle">
+              <span class="slider"></span>
+            </label>
+            <span class="mode-toggle-text">Kích hoạt Chế độ Mô phỏng</span>
+          </div>
+
+          <div class="simulation-note">
+            <p id="mode-description">
+              Hệ thống đang chạy ở chế độ <strong>Tự động</strong>. Luồng AI camera sẽ liên tục gửi lệnh phân loại xuống phần cứng.
+            </p>
+          </div>
+
+          <!-- Simulator Panel (Active in simulation mode only) -->
+          <div id="simulator-panel" class="simulator-panel disabled">
+            <div class="form-group">
+              <label for="species-select">Chọn loài muỗi giả lập:</label>
+              <select id="species-select" disabled>
+                <option value="">-- Đang tải danh sách muỗi... --</option>
+              </select>
+            </div>
+
+            <!-- Species Spec Preview -->
+            <div id="species-preview" class="species-preview hidden">
+              <div class="preview-header">
+                <h3>Chi tiết loài muỗi đã chọn</h3>
+              </div>
+              <div class="preview-body">
+                <div class="preview-item">
+                  <span class="preview-label">Tên khoa học:</span>
+                  <span id="preview-name" class="preview-val">-</span>
+                </div>
+                <div class="preview-item">
+                  <span class="preview-label">ID của loài:</span>
+                  <span id="preview-id" class="preview-val">-</span>
+                </div>
+                <div class="preview-item">
+                  <span class="preview-label">Màu LED:</span>
+                  <span class="preview-val color-preview-val">
+                    <span id="preview-color-box" class="color-box"></span>
+                    <span id="preview-rgb-text">-</span>
+                  </span>
+                </div>
+                <div class="preview-item">
+                  <span class="preview-label">Ô xoay hứng mẫu:</span>
+                  <span id="preview-slot" class="preview-val font-highlight">-</span>
+                </div>
+                <div class="preview-item">
+                  <span class="preview-label">Góc xoay mốc:</span>
+                  <span id="preview-angle" class="preview-val font-highlight">-</span>
+                </div>
+              </div>
+            </div>
+
+            <button id="btn-simulate" class="btn btn-simulate" disabled>
+              📤 Gửi tín hiệu mô phỏng xuống Phần cứng
+            </button>
+          </div>
+        </section>
+
+        <!-- Right Side: API Controls (High-level and Mid-level APIs) -->
+        <section class="dashboard-card card-secondary">
+          <h2 class="card-title">Hệ thống Lệnh API & Điều khiển Servo</h2>
+          
+          <div class="api-grid">
+            <!-- Reset Home & Absolute Turn -->
+            <div class="api-section">
+              <h3>Điều khiển Góc cơ bản (Tầng 2 & 3)</h3>
+              <div class="btn-group-home">
+                <button id="btn-reset-home" class="btn btn-danger">🏠 Reset về vị trí gốc (Home 0°)</button>
+              </div>
+              <div class="control-row">
+                <div class="input-group">
+                  <label for="rotate-left-deg">Độ xoay trái:</label>
+                  <input type="number" id="rotate-left-deg" value="10" min="1" max="359">
+                </div>
+                <button id="btn-rotate-left" class="btn btn-action">⬅ Xoay Trái</button>
+              </div>
+              <div class="control-row">
+                <div class="input-group">
+                  <label for="rotate-right-deg">Độ xoay phải:</label>
+                  <input type="number" id="rotate-right-deg" value="10" min="1" max="359">
+                </div>
+                <button id="btn-rotate-right" class="btn btn-action">Xoay Phải ➡</button>
+              </div>
+            </div>
+
+            <!-- Rotate Slot to Angle -->
+            <div class="api-section">
+              <h3>Xoay ô chỉ định đến Góc mong muốn (Tầng 3)</h3>
+              <div class="control-row-three">
+                <div class="input-group">
+                  <label for="slot-to-angle-select">Chọn Ô:</label>
+                  <select id="slot-to-angle-select">
+                    <!-- Dinamically loaded slots A-Z, A0-J0 -->
+                  </select>
+                </div>
+                <div class="input-group">
+                  <label for="slot-target-angle">Góc xoay (°):</label>
+                  <input type="number" id="slot-target-angle" value="90" min="0" max="359">
+                </div>
+                <button id="btn-slot-to-angle" class="btn btn-action">🎯 Thực thi</button>
+              </div>
+            </div>
+
+            <!-- Move Slot to Slot -->
+            <div class="api-section">
+              <h3>Hoán đổi vị trí ô (Tầng 3)</h3>
+              <div class="control-row-three">
+                <div class="input-group">
+                  <label for="slot-from-select">Xoay ô:</label>
+                  <select id="slot-from-select">
+                    <!-- Dinamically loaded -->
+                  </select>
+                </div>
+                <div class="input-group">
+                  <label for="slot-to-select">Đến vị trí ô:</label>
+                  <select id="slot-to-select">
+                    <!-- Dinamically loaded -->
+                  </select>
+                </div>
+                <button id="btn-move-slot" class="btn btn-action">🔄 Thực thi</button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+      </main>
+    </div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

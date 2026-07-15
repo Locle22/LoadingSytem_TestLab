@@ -7,11 +7,16 @@
 //! 2. Mapping the `--device` string to [`ComputeDevice`].
 //! 3. Constructing a [`YoloDetector`] and calling [`YoloDetector::detect`].
 //! 4. Handling Real-time DroidCam streaming or Single Image inference.
+//! 5. Hosting the HTTP API server for the Web UI.
 
 mod iot;
+mod hardware;
+mod api_layer3;
+mod web_server;
 
 use std::process;
 use std::sync::{Arc, RwLock};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -23,7 +28,8 @@ use ai_vision::draw::draw_detections;
 use ai_vision::stream::MjpegStream;
 use ai_vision::{ComputeDevice, YoloDetector};
 
-use crate::iot::{get_species_color, UdpSender, CLASS_ID_NONE};
+use crate::iot::{get_species_color, CLASS_ID_NONE};
+use crate::hardware::HardwareBackend;
 
 // ──────────────────────────────────────────────
 //  CLI Definition
@@ -52,6 +58,10 @@ struct Cli {
     /// ESP32 S3 IP Address to send UDP color commands (e.g., 192.168.1.10)
     #[arg(long)]
     esp_ip: Option<String>,
+
+    /// Chạy chế độ điều khiển bằng PLC công nghiệp thay vì ESP32 S3
+    #[arg(long)]
+    plc: bool,
 
     /// Compute device: `cpu`, `cuda:0`, `cuda:1`, `tensorrt:0`, …
     #[arg(short, long, default_value = "cpu")]
@@ -94,8 +104,31 @@ fn run() -> Result<()> {
         .with_context(|| "Failed to initialise YoloDetector")?;
     eprintln!("  ✔ Model loaded successfully.\n");
 
+    // ── Khởi tạo Hardware Backend (Tầng 2) ────────────────────────
+    let backend: Arc<dyn HardwareBackend> = if cli.plc {
+        Arc::new(crate::hardware::PlcBackend::new())
+    } else {
+        let ip = cli.esp_ip.as_deref().unwrap_or("192.168.1.56");
+        eprintln!("  ⏳ Khởi tạo backend ESP32 S3 tại {}:8888...", ip);
+        let b = crate::hardware::Esp32Backend::new(ip, 8888)
+            .with_context(|| "Failed to initialize ESP32 Backend")?;
+        eprintln!("  ✔ ESP32 IoT Backend: ACTIVE");
+        Arc::new(b)
+    };
+
+    let is_simulation_mode = Arc::new(AtomicBool::new(false));
+
+    // ── Khởi chạy HTTP API Server cho Web UI (Tầng 3) ──────────────
+    // Khởi tạo Tokio Multi-thread runtime để chạy web server dưới nền
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()?;
+    let _guard = rt.enter();
+
+    crate::web_server::start_server(Arc::clone(&backend), Arc::clone(&is_simulation_mode), 3000);
+
     if let Some(url) = &cli.camera {
-        run_realtime(&detector, url, cli.esp_ip.as_deref())?;
+        run_realtime(&detector, url, backend, is_simulation_mode)?;
     } else if let Some(image_path) = &cli.image {
         run_single_image(&detector, image_path)?;
     }
@@ -107,20 +140,15 @@ fn run() -> Result<()> {
 //  Real-time Mode (DroidCam)
 // ──────────────────────────────────────────────
 
-fn run_realtime(detector: &YoloDetector, url: &str, esp_ip: Option<&str>) -> Result<()> {
+fn run_realtime(
+    detector: &YoloDetector,
+    url: &str,
+    backend: Arc<dyn HardwareBackend>,
+    is_simulation_mode: Arc<AtomicBool>,
+) -> Result<()> {
     eprintln!("  ⏳ Connecting to DroidCam: {}", url);
     let mut stream = MjpegStream::new(url).with_context(|| "Failed to connect to IP Camera")?;
     eprintln!("  ✔ Connected! Press ESC to exit.");
-
-    // Thiết lập kết nối UDP tới ESP32 (Nếu có cung cấp IP)
-    let udp_sender = if let Some(ip) = esp_ip {
-        eprintln!("  ⏳ Kết nối UDP đến ESP32 tại {ip}:8888...");
-        let sender = UdpSender::new(ip, 8888).with_context(|| "Failed to bind UDP socket")?;
-        eprintln!("  ✔ ESP32 IoT Integration: ACTIVE");
-        Some(sender)
-    } else {
-        None
-    };
 
     // Shared State between threads
     let shared_frame = Arc::new(RwLock::new(None::<image::DynamicImage>));
@@ -141,14 +169,12 @@ fn run_realtime(detector: &YoloDetector, url: &str, esp_ip: Option<&str>) -> Res
     });
 
     // ── Thread 2: AI Inference ──
-    // Note: We need a cheap way to share the detector. Since we can't easily move the reference,
-    // we assume the detector is just cloned or we can just run the detection here if we pass an Arc.
-    // Wait, since detector is a reference in run_realtime, we can't easily pass it to a thread without Arc.
-    // Instead of Arc-ing detector, we can use std::thread::scope to spawn threads that borrow from the local stack!
     std::thread::scope(|s| {
         let frame_clone = Arc::clone(&shared_frame);
         let det_clone = Arc::clone(&shared_detections);
         let running_clone = Arc::clone(&is_running);
+        let backend_clone = Arc::clone(&backend);
+        let sim_mode_clone = Arc::clone(&is_simulation_mode);
 
         s.spawn(move || {
             let inference_interval = Duration::from_millis(200); // 5 FPS
@@ -175,22 +201,22 @@ fn run_realtime(detector: &YoloDetector, url: &str, esp_ip: Option<&str>) -> Res
                                     .collect();
                                 println!("🦟 Đã phát hiện: {}", species_list.join(", "));
 
-                                // Giao tiếp với ESP32 S3 (Điều khiển đèn LED + Servo đĩa xoay)
-                                if let Some(ref sender) = udp_sender {
+                                // Chỉ gửi lệnh tự động nếu KHÔNG ở chế độ mô phỏng
+                                if !sim_mode_clone.load(Ordering::SeqCst) {
                                     if last_action_time.elapsed() >= action_cooldown {
                                         last_action_time = Instant::now();
                                         // Lấy loài có độ tin cậy cao nhất
                                         let best_match = &detections[0];
                                         let class_id = best_match.class_id as u8;
                                         let (r, g, b) = get_species_color(class_id);
-                                        sender.send_command(r, g, b, class_id);
+                                        backend_clone.send_mosquito_command(r, g, b, class_id);
                                     }
                                 }
                             } else {
-                                // Tắt đèn, giữ nguyên servo
-                                if let Some(ref sender) = udp_sender {
+                                // Tắt đèn, giữ nguyên servo nếu không mô phỏng
+                                if !sim_mode_clone.load(Ordering::SeqCst) {
                                     if last_action_time.elapsed() >= action_cooldown {
-                                        sender.send_command(0, 0, 0, CLASS_ID_NONE);
+                                        backend_clone.send_mosquito_command(0, 0, 0, CLASS_ID_NONE);
                                     }
                                 }
                             }

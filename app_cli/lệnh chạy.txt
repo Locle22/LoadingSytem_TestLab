@@ -1,0 +1,9 @@
+Lệnh cho máy có GPU:
+cargo run --release --features cuda -p app_cli -- --model "app_cli\models\moquito_v19_e150.onnx" --camera "http://192.168.1.46:4747/video" --device "cuda:0" --esp-ip "192.168.1.56" --conf 0.65
+
+Lệnh dành cho máy không có GPU:
+cargo run --release -p app_cli -- --model "app_cli\models\moquito_v19_e150.onnx" --camera "http://192.168.1.46:4747/video" --esp-ip "192.168.1.56" --conf 0.65
+
+
+*** LƯU Ý QUAN TRỌNG:
+Cần thay IP cuả camera và ip cuả esp32
