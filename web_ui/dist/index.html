@@ -9,8 +9,8 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-    <script type="module" crossorigin src="/assets/index-DbYU8PvI.js"></script>
-    <link rel="stylesheet" crossorigin href="/assets/index-DdXoHr4a.css">
+    <script type="module" crossorigin src="/assets/index-DpjAhBNS.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-Ct9owxRA.css">
   </head>
   <body>
     <div id="app">
@@ -35,6 +35,22 @@
           </div>
         </div>
       </header>
+
+      <!-- Live Camera Feed -->
+      <section class="camera-section">
+        <div class="camera-container">
+          <div class="camera-header">
+            <h2>📹 Camera AI Trực tiếp</h2>
+            <span id="camera-status" class="camera-badge">⏳ Đang kết nối...</span>
+          </div>
+          <div class="camera-viewport">
+            <img id="camera-feed" alt="Camera Feed" />
+            <div id="camera-overlay" class="camera-overlay">
+              <p>📷 Đang chờ luồng hình ảnh từ Camera...</p>
+            </div>
+          </div>
+        </div>
+      </section>
 
       <!-- Main Container Grid -->
       <main class="dashboard-grid">
@@ -172,6 +188,34 @@
         </section>
 
       </main>
+
+      <!-- Detection Log -->
+      <section class="log-section">
+        <div class="log-container">
+          <div class="log-header">
+            <h2>📋 Lịch sử Nhận diện Thời gian thực</h2>
+            <span id="log-count" class="log-badge">0 bản ghi</span>
+          </div>
+          <div class="log-table-wrapper">
+            <table class="log-table">
+              <thead>
+                <tr>
+                  <th>Thời gian</th>
+                  <th>Loài muỗi</th>
+                  <th>ID</th>
+                  <th>Độ tin cậy</th>
+                  <th>Màu LED</th>
+                  <th>Ô mâm</th>
+                  <th>Góc</th>
+                </tr>
+              </thead>
+              <tbody id="log-body">
+                <tr class="log-empty"><td colspan="7">Chưa có dữ liệu nhận diện...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
     </div>
   </body>
 </html>

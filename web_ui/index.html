@@ -34,6 +34,22 @@
         </div>
       </header>
 
+      <!-- Live Camera Feed -->
+      <section class="camera-section">
+        <div class="camera-container">
+          <div class="camera-header">
+            <h2>📹 Camera AI Trực tiếp</h2>
+            <span id="camera-status" class="camera-badge">⏳ Đang kết nối...</span>
+          </div>
+          <div class="camera-viewport">
+            <img id="camera-feed" alt="Camera Feed" />
+            <div id="camera-overlay" class="camera-overlay">
+              <p>📷 Đang chờ luồng hình ảnh từ Camera...</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <!-- Main Container Grid -->
       <main class="dashboard-grid">
         
@@ -170,6 +186,34 @@
         </section>
 
       </main>
+
+      <!-- Detection Log -->
+      <section class="log-section">
+        <div class="log-container">
+          <div class="log-header">
+            <h2>📋 Lịch sử Nhận diện Thời gian thực</h2>
+            <span id="log-count" class="log-badge">0 bản ghi</span>
+          </div>
+          <div class="log-table-wrapper">
+            <table class="log-table">
+              <thead>
+                <tr>
+                  <th>Thời gian</th>
+                  <th>Loài muỗi</th>
+                  <th>ID</th>
+                  <th>Độ tin cậy</th>
+                  <th>Màu LED</th>
+                  <th>Ô mâm</th>
+                  <th>Góc</th>
+                </tr>
+              </thead>
+              <tbody id="log-body">
+                <tr class="log-empty"><td colspan="7">Chưa có dữ liệu nhận diện...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
     </div>
     <script type="module" src="/src/main.js"></script>
   </body>

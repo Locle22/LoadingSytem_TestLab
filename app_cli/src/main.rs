@@ -178,6 +178,9 @@ fn run() -> Result<()> {
         }
     };
 
+    let shared_frame = Arc::new(RwLock::new(None::<image::DynamicImage>));
+    let shared_detections = Arc::new(RwLock::new(Vec::<ai_vision::types::Detection>::new()));
+    let detection_log = Arc::new(RwLock::new(Vec::<crate::web_server::DetectionLogEntry>::new()));
     let is_simulation_mode = Arc::new(AtomicBool::new(false));
 
     // ── Khởi chạy HTTP API Server cho Web UI (Tầng 3) ──────────────
@@ -186,12 +189,28 @@ fn run() -> Result<()> {
         .build()?;
     let _guard = rt.enter();
 
-    crate::web_server::start_server(Arc::clone(&backend), Arc::clone(&is_simulation_mode), 3000);
+    crate::web_server::start_server(
+        Arc::clone(&backend),
+        Arc::clone(&is_simulation_mode),
+        Arc::clone(&shared_frame),
+        Arc::clone(&shared_detections),
+        Arc::clone(&detection_log),
+        3000,
+    );
 
     if let Some(image_path) = &cli.image {
         run_single_image(&detector, image_path)?;
     } else {
-        run_realtime(&detector, camera_url, usb_cam_index, backend, is_simulation_mode)?;
+        run_realtime(
+            &detector,
+            camera_url,
+            usb_cam_index,
+            backend,
+            is_simulation_mode,
+            shared_frame,
+            shared_detections,
+            detection_log,
+        )?;
     }
 
     Ok(())
@@ -207,12 +226,11 @@ fn run_realtime(
     usb_cam_index: Option<u32>,
     backend: Arc<dyn HardwareBackend>,
     is_simulation_mode: Arc<AtomicBool>,
+    shared_frame: Arc<RwLock<Option<image::DynamicImage>>>,
+    shared_detections: Arc<RwLock<Vec<ai_vision::types::Detection>>>,
+    detection_log: Arc<RwLock<Vec<crate::web_server::DetectionLogEntry>>>,
 ) -> Result<()> {
     eprintln!("  ✔ Dang khoi dong luong Camera. Nhan ESC tren cua so de thoat.");
-
-    // Shared State between threads
-    let shared_frame = Arc::new(RwLock::new(None::<image::DynamicImage>));
-    let shared_detections = Arc::new(RwLock::new(Vec::<ai_vision::types::Detection>::new()));
 
     let is_running = Arc::new(RwLock::new(true));
 
@@ -258,6 +276,7 @@ fn run_realtime(
         let running_clone = Arc::clone(&is_running);
         let backend_clone = Arc::clone(&backend);
         let sim_mode_clone = Arc::clone(&is_simulation_mode);
+        let log_clone = Arc::clone(&detection_log);
 
         s.spawn(move || {
             let inference_interval = Duration::from_millis(200); // 5 FPS
@@ -291,6 +310,24 @@ fn run_realtime(
                                         let class_id = best_match.class_id as u8;
                                         let (r, g, b) = get_species_color(class_id);
                                         backend_clone.send_mosquito_command(r, g, b, class_id);
+
+                                        // Thêm bản ghi vào lịch sử nhận diện tự động
+                                        let mut log = log_clone.write().unwrap();
+                                        log.push(crate::web_server::DetectionLogEntry {
+                                            timestamp_ms: std::time::SystemTime::now()
+                                                .duration_since(std::time::UNIX_EPOCH)
+                                                .unwrap()
+                                                .as_millis() as u64,
+                                            class_id,
+                                            species_name: best_match.class_name.to_string(),
+                                            confidence: best_match.confidence,
+                                            rgb: (r, g, b),
+                                            slot: crate::api_layer3::slot_name(class_id as usize),
+                                            angle: crate::api_layer3::slot_angle(class_id as usize),
+                                        });
+                                        if log.len() > 100 {
+                                            log.remove(0);
+                                        }
                                     }
                                 }
                             } else {

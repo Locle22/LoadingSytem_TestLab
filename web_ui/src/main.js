@@ -78,6 +78,10 @@ async function init() {
   // Chạy vòng lặp cập nhật trạng thái định kỳ 1s
   setInterval(updateStatus, 1000);
   updateStatus(); // Chạy ngay lần đầu tiên
+
+  refreshCamera(); // Bắt đầu luồng camera
+  setInterval(updateDetectionLog, 1000); // Cập nhật log mỗi giây
+  updateDetectionLog();
 }
 
 // ──────────────────────────────────────────────
@@ -234,6 +238,81 @@ function handleSimulateClick() {
   const classId = speciesSelect.value;
   if (classId !== '') {
     postAPI('/simulate_mosquito', { class_id: parseInt(classId) });
+  }
+}
+
+// ──────────────────────────────────────────────
+//  Camera Feed (Snapshot Polling)
+// ──────────────────────────────────────────────
+
+const cameraFeed = document.getElementById('camera-feed');
+const cameraOverlay = document.getElementById('camera-overlay');
+const cameraStatus = document.getElementById('camera-status');
+let cameraConnected = false;
+
+function refreshCamera() {
+  const newImg = new Image();
+  newImg.onload = function() {
+    cameraFeed.src = this.src;
+    if (!cameraConnected) {
+      cameraConnected = true;
+      cameraOverlay.classList.add('hidden');
+      cameraStatus.textContent = '🟢 Trực tiếp';
+      cameraStatus.classList.add('connected');
+    }
+    setTimeout(refreshCamera, 100); // ~10 FPS
+  };
+  newImg.onerror = function() {
+    if (cameraConnected) {
+      cameraConnected = false;
+      cameraOverlay.classList.remove('hidden');
+      cameraStatus.textContent = '🔴 Mất kết nối';
+      cameraStatus.classList.remove('connected');
+    }
+    setTimeout(refreshCamera, 1000); // Retry after 1s
+  };
+  newImg.src = `${API_BASE}/snapshot?t=${Date.now()}`;
+}
+
+// ──────────────────────────────────────────────
+//  Detection Log (Real-time History)
+// ──────────────────────────────────────────────
+
+const logBody = document.getElementById('log-body');
+const logCount = document.getElementById('log-count');
+let lastLogLength = 0;
+
+async function updateDetectionLog() {
+  try {
+    const response = await fetch(`${API_BASE}/detection_log`);
+    if (!response.ok) return;
+    const entries = await response.json();
+
+    if (entries.length === lastLogLength) return; // No change
+    lastLogLength = entries.length;
+    logCount.textContent = `${entries.length} bản ghi`;
+
+    if (entries.length === 0) {
+      logBody.innerHTML = '<tr class="log-empty"><td colspan="7">Chưa có dữ liệu nhận diện...</td></tr>';
+      return;
+    }
+
+    logBody.innerHTML = entries.map(e => {
+      const time = new Date(e.timestamp_ms).toLocaleTimeString('vi-VN');
+      const [r, g, b] = e.rgb;
+      const conf = (e.confidence * 100).toFixed(1);
+      return `<tr class="log-row">
+        <td class="log-time">${time}</td>
+        <td class="log-species">${e.species_name}</td>
+        <td>${e.class_id}</td>
+        <td><span class="conf-badge">${conf}%</span></td>
+        <td><span class="color-dot" style="background:rgb(${r},${g},${b})"></span> RGB(${r},${g},${b})</td>
+        <td class="log-slot">Ô ${e.slot}</td>
+        <td>${e.angle}°</td>
+      </tr>`;
+    }).join('');
+  } catch (err) {
+    // API not available yet
   }
 }
 

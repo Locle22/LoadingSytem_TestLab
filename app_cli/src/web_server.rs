@@ -6,6 +6,7 @@ use axum::{
     extract::{State, Json},
     http::StatusCode,
     routing::{get, post},
+    response::IntoResponse,
     Router,
 };
 use serde::{Deserialize, Serialize};
@@ -18,15 +19,27 @@ use crate::hardware::HardwareBackend;
 use crate::api_layer3::{self, slot_index, slot_name, slot_angle};
 use crate::iot::get_species_color;
 
-// ──────────────────────────────────────────────
-//  Shared State & DTOs
-// ──────────────────────────────────────────────
+use std::sync::RwLock;
+
+#[derive(Clone, Serialize)]
+pub struct DetectionLogEntry {
+    pub timestamp_ms: u64,
+    pub class_id: u8,
+    pub species_name: String,
+    pub confidence: f32,
+    pub rgb: (u8, u8, u8),
+    pub slot: String,
+    pub angle: i32,
+}
 
 /// State chia sẻ giữa các handler của Axum.
 #[derive(Clone)]
 pub struct WebState {
     pub backend: Arc<dyn HardwareBackend>,
     pub is_simulation_mode: Arc<AtomicBool>,
+    pub shared_frame: Arc<RwLock<Option<image::DynamicImage>>>,
+    pub shared_detections: Arc<RwLock<Vec<ai_vision::types::Detection>>>,
+    pub detection_log: Arc<RwLock<Vec<DetectionLogEntry>>>,
 }
 
 #[derive(Serialize)]
@@ -142,6 +155,31 @@ async fn post_simulate_mosquito(
 ) -> StatusCode {
     if state.is_simulation_mode.load(Ordering::SeqCst) {
         api_layer3::simulate_mosquito(&*state.backend, payload.class_id);
+
+        // Thêm bản ghi vào lịch sử nhận diện giả lập
+        let class_id = payload.class_id;
+        let (r, g, b) = get_species_color(class_id);
+        let name = ai_vision::types::LABELS.get(class_id as usize)
+            .copied()
+            .unwrap_or("Unknown");
+
+        let mut log = state.detection_log.write().unwrap();
+        log.push(DetectionLogEntry {
+            timestamp_ms: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_millis() as u64,
+            class_id,
+            species_name: name.to_string(),
+            confidence: 1.0, // Mô phỏng giả định 100% confidence
+            rgb: (r, g, b),
+            slot: slot_name(class_id as usize),
+            angle: slot_angle(class_id as usize),
+        });
+        if log.len() > 100 {
+            log.remove(0);
+        }
+
         StatusCode::OK
     } else {
         // Chỉ cho phép mô phỏng khi ở chế độ Simulation Mode
@@ -164,15 +202,49 @@ async fn get_species_list() -> Json<Vec<SpeciesInfo>> {
     Json(list)
 }
 
+async fn get_snapshot(State(state): State<WebState>) -> impl axum::response::IntoResponse {
+    let frame_opt = state.shared_frame.read().unwrap().clone();
+    let detections = state.shared_detections.read().unwrap().clone();
+    if let Some(frame) = frame_opt {
+        let mut rgb_image = frame.into_rgb8();
+        ai_vision::draw::draw_detections(&mut rgb_image, &detections);
+
+        let annotated_frame = image::DynamicImage::ImageRgb8(rgb_image);
+        let mut buffer = std::io::Cursor::new(Vec::new());
+        if annotated_frame.write_to(&mut buffer, image::ImageFormat::Jpeg).is_ok() {
+            let mut headers = axum::http::HeaderMap::new();
+            headers.insert(axum::http::header::CONTENT_TYPE, "image/jpeg".parse().unwrap());
+            headers.insert(axum::http::header::CACHE_CONTROL, "no-cache, no-store, must-revalidate".parse().unwrap());
+            return (headers, buffer.into_inner()).into_response();
+        }
+    }
+    StatusCode::NOT_FOUND.into_response()
+}
+
+async fn get_detection_log(State(state): State<WebState>) -> Json<Vec<DetectionLogEntry>> {
+    let log = state.detection_log.read().unwrap().clone();
+    Json(log)
+}
+
 // ──────────────────────────────────────────────
 //  Server Launch
 // ──────────────────────────────────────────────
 
 /// Chạy HTTP Server trên luồng nền của Tokio.
-pub fn start_server(backend: Arc<dyn HardwareBackend>, is_simulation_mode: Arc<AtomicBool>, port: u16) {
+pub fn start_server(
+    backend: Arc<dyn HardwareBackend>,
+    is_simulation_mode: Arc<AtomicBool>,
+    shared_frame: Arc<RwLock<Option<image::DynamicImage>>>,
+    shared_detections: Arc<RwLock<Vec<ai_vision::types::Detection>>>,
+    detection_log: Arc<RwLock<Vec<DetectionLogEntry>>>,
+    port: u16,
+) {
     let state = WebState {
         backend,
         is_simulation_mode,
+        shared_frame,
+        shared_detections,
+        detection_log,
     };
 
     // Tạo cấu hình CORS để cho phép Local Web UI giao tiếp
@@ -194,6 +266,8 @@ pub fn start_server(backend: Arc<dyn HardwareBackend>, is_simulation_mode: Arc<A
         .route("/api/move_slot_to_slot", post(post_move_slot_to_slot))
         .route("/api/simulate_mosquito", post(post_simulate_mosquito))
         .route("/api/species_list", get(get_species_list))
+        .route("/api/snapshot", get(get_snapshot))
+        .route("/api/detection_log", get(get_detection_log))
         .fallback_service(ServeDir::new("web_ui/dist"))
         .layer(cors)
         .with_state(state);
