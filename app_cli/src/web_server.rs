@@ -40,6 +40,7 @@ pub struct WebState {
     pub shared_frame: Arc<RwLock<Option<image::DynamicImage>>>,
     pub shared_detections: Arc<RwLock<Vec<ai_vision::types::Detection>>>,
     pub detection_log: Arc<RwLock<Vec<DetectionLogEntry>>>,
+    pub last_jpeg_cache: Arc<RwLock<Option<Vec<u8>>>>,
 }
 
 #[derive(Serialize)]
@@ -212,12 +213,24 @@ async fn get_snapshot(State(state): State<WebState>) -> impl axum::response::Int
         let annotated_frame = image::DynamicImage::ImageRgb8(rgb_image);
         let mut buffer = std::io::Cursor::new(Vec::new());
         if annotated_frame.write_to(&mut buffer, image::ImageFormat::Jpeg).is_ok() {
+            let bytes = buffer.into_inner();
+            *state.last_jpeg_cache.write().unwrap() = Some(bytes.clone());
+
             let mut headers = axum::http::HeaderMap::new();
             headers.insert(axum::http::header::CONTENT_TYPE, "image/jpeg".parse().unwrap());
             headers.insert(axum::http::header::CACHE_CONTROL, "no-cache, no-store, must-revalidate".parse().unwrap());
-            return (headers, buffer.into_inner()).into_response();
+            return (headers, bytes).into_response();
         }
     }
+
+    // Nếu không lấy được frame mới, sử dụng cache JPEG từ khung hình gần nhất
+    if let Some(cached_bytes) = state.last_jpeg_cache.read().unwrap().clone() {
+        let mut headers = axum::http::HeaderMap::new();
+        headers.insert(axum::http::header::CONTENT_TYPE, "image/jpeg".parse().unwrap());
+        headers.insert(axum::http::header::CACHE_CONTROL, "no-cache, no-store, must-revalidate".parse().unwrap());
+        return (headers, cached_bytes).into_response();
+    }
+
     StatusCode::NOT_FOUND.into_response()
 }
 
@@ -245,6 +258,7 @@ pub fn start_server(
         shared_frame,
         shared_detections,
         detection_log,
+        last_jpeg_cache: Arc::new(RwLock::new(None)),
     };
 
     // Tạo cấu hình CORS để cho phép Local Web UI giao tiếp

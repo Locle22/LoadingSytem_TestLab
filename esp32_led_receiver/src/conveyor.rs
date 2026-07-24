@@ -6,7 +6,8 @@ use std::sync::Arc;
 // Hằng số chu kỳ xung điều khiển (Duty Cycles)
 // ──────────────────────────────────────────────
 const DUTY_STOP: u32 = 1229;
-const DUTY_SLOW_CW: u32 = 1106;
+// Đặt duty 1150 (quay chậm vừa đủ vượt qua vùng chết deadband của Servo 360)
+const DUTY_MIN_SPEED_CW: u32 = 1150; 
 
 /// Tầng 2: Thiết lập Băng chuyền (Conveyor Controller)
 /// Quản lý vận hành băng chuyền kéo mẫu muỗi.
@@ -21,9 +22,9 @@ impl<'a> Conveyor<'a> {
         Self { servo, is_running }
     }
 
-    /// Kích hoạt băng chuyền chạy liên tục.
+    /// Kích hoạt băng chuyền chạy liên tục ở tốc độ tối thiểu.
     pub fn start(&mut self) -> anyhow::Result<()> {
-        self.servo.set_duty(DUTY_SLOW_CW)?;
+        self.servo.set_duty(DUTY_MIN_SPEED_CW)?;
         self.is_running.store(true, Ordering::SeqCst);
         Ok(())
     }

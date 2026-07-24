@@ -32,19 +32,25 @@ goto CHOOSE_HW
 :CHOOSE_HW
 echo.
 echo CHON THIET BI DIEU KHIEN PHAN CUNG:
-echo   [1] ESP32 S3 (Tu dong phan giai hostname hoac UDP Broadcast)
+echo   [1] ESP32 S3 (Tu dong phan giai hoac Nhap IP)
 echo   [2] PLC cong nghiep (Che do in gia lap console)
 set /p "HW_MODE=Moi nhap lua chon (1 hoac 2, Mac dinh: 1): "
 if "%HW_MODE%"=="" set "HW_MODE=1"
 
 set "HW_ARG="
-if "%HW_MODE%"=="2" set "HW_ARG=--plc"
+if "%HW_MODE%"=="2" (
+    set "HW_ARG=--plc"
+) else (
+    echo.
+    set /p "ESP_IP_INPUT=Nhap IP cua ESP32 (Neu dung Hotspot DT nhap VD 172.20.10.3, de trong neu dung Tu Dong): "
+    if not "%ESP_IP_INPUT%"=="" set "HW_ARG=--esp-ip %ESP_IP_INPUT%"
+)
 
 echo.
 echo -----------------------------------------------------------------
 echo   -> Nguon video: %CAM_ARG%
 if "%HW_MODE%"=="1" (
-    echo   -> Thiet bi:   ESP32 S3 (Auto-Discovery)
+    echo   -> Thiet bi:   ESP32 S3 %HW_ARG%
 ) else (
     echo   -> Thiet bi:   PLC cong nghiep (Stub)
 )
@@ -53,9 +59,8 @@ echo.
 echo [*] Dang chuan bi khoi dong he thong...
 echo [*] Tu dong mo trinh duyet sau 3 giay...
 
-:: Cho 3 giay va tu dong mo trinh duyet den giao dien
-timeout /t 3 /nobreak >nul
-start "" "http://localhost:3000"
+:: Mo trinh duyet sau khi backend khoi dong xong (chay ngam trong background)
+start "" powershell -Command "Start-Sleep -Seconds 6; Start-Process 'http://localhost:3000'"
 
 :: Khoi dong backend Rust
 cargo run --release -p app_cli -- --model "app_cli\models\moquito_v19_e150.onnx" %CAM_ARG% %HW_ARG%

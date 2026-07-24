@@ -152,12 +152,24 @@ fn run() -> Result<()> {
             // Thử mDNS trước
             if let Some(ip) = try_resolve_mdns(ip_or_host, 8888) {
                 Some(ip)
+            } else if let Some(ip) = discover_esp32_ip(Duration::from_secs(2)) {
+                Some(ip)
             } else {
-                // Nếu mDNS thất bại, thử UDP Broadcast dò tìm IP tự động
-                discover_esp32_ip(Duration::from_secs(2))
+                println!("-----------------------------------------------------");
+                eprintln!("  💡 Do Windows Firewall hoac Wi-Fi chan Broadcast, hay nhap IP ESP32.");
+                eprint!("  👉 Nhap IP ESP32 (Mac dinh bam Enter de dung 192.168.1.27): ");
+                io::stdout().flush().unwrap();
+                let mut input_ip = String::new();
+                let _ = io::stdin().read_line(&mut input_ip);
+                let trimmed = input_ip.trim();
+                if trimmed.is_empty() {
+                    Some("192.168.1.27".to_string())
+                } else {
+                    Some(trimmed.to_string())
+                }
             }
         } else {
-            // Dùng IP do người dùng chủ động điền
+            // Dùng IP do người dùng truyền qua tham số
             Some(ip_or_host.to_string())
         };
 

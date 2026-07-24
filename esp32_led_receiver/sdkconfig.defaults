@@ -4,6 +4,14 @@ CONFIG_ESP_MAIN_TASK_STACK_SIZE=8000
 # Use this to set FreeRTOS hz to 1000
 CONFIG_FREERTOS_HZ=1000
 
-# Workaround for https://github.com/espressif/esp-idf/issues/7631
-#CONFIG_MBEDTLS_CERTIFICATE_BUNDLE=n
-#CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_DEFAULT_FULL=n
+# Increase HTTP Server max request header & URI limits for desktop browsers (Chrome/Edge/Firefox)
+CONFIG_HTTPD_MAX_REQ_HDR_LEN=2048
+CONFIG_HTTPD_MAX_URI_LEN=1024
+
+# Set Flash size to 8MB (since board is ESP32-S3 8MB)
+CONFIG_ESPTOOLPY_FLASHSIZE_8MB=y
+CONFIG_ESPTOOLPY_FLASHSIZE="8MB"
+
+# Custom 3MB Partition Table using absolute path
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="D:/AI Mosquitto Detector/yolo_workspace/esp32_led_receiver/partitions.csv"

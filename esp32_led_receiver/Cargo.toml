@@ -40,3 +40,5 @@ embuild = { version = "0.32.0", features = ["espidf"] }
 
 [workspace]
 
+[package.metadata.esp-idf-sys]
+esp_idf_sdkconfig_defaults = ["sdkconfig.defaults"]

@@ -249,10 +249,12 @@ const cameraFeed = document.getElementById('camera-feed');
 const cameraOverlay = document.getElementById('camera-overlay');
 const cameraStatus = document.getElementById('camera-status');
 let cameraConnected = false;
+let failedFetchCount = 0;
 
 function refreshCamera() {
   const newImg = new Image();
   newImg.onload = function() {
+    failedFetchCount = 0;
     cameraFeed.src = this.src;
     if (!cameraConnected) {
       cameraConnected = true;
@@ -263,13 +265,14 @@ function refreshCamera() {
     setTimeout(refreshCamera, 100); // ~10 FPS
   };
   newImg.onerror = function() {
-    if (cameraConnected) {
+    failedFetchCount++;
+    if (failedFetchCount >= 3 && cameraConnected) {
       cameraConnected = false;
       cameraOverlay.classList.remove('hidden');
       cameraStatus.textContent = '🔴 Mất kết nối';
       cameraStatus.classList.remove('connected');
     }
-    setTimeout(refreshCamera, 1000); // Retry after 1s
+    setTimeout(refreshCamera, 300); // Thử lại nhanh sau 300ms
   };
   newImg.src = `${API_BASE}/snapshot?t=${Date.now()}`;
 }
