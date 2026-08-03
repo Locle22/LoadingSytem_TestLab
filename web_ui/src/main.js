@@ -13,6 +13,7 @@ const statusMode = document.getElementById('status-mode');
 const statusBackend = document.getElementById('status-backend');
 const statusAngle = document.getElementById('status-angle');
 const modeToggle = document.getElementById('mode-toggle');
+const themeToggle = document.getElementById('theme-toggle');
 const modeDescription = document.getElementById('mode-description');
 const simulatorPanel = document.getElementById('simulator-panel');
 
@@ -40,16 +41,52 @@ const slotFromSelect = document.getElementById('slot-from-select');
 const slotToSelect = document.getElementById('slot-to-select');
 const btnMoveSlot = document.getElementById('btn-move-slot');
 
+// Active Learning Elements
+const btnReconnectCamera = document.getElementById('btn-reconnect-camera');
+const btnActiveCapture = document.getElementById('btn-active-capture');
+const labelModal = document.getElementById('label-modal');
+const btnCloseModal = document.getElementById('btn-close-modal');
+const btnCancelCapture = document.getElementById('btn-cancel-capture');
+const btnConfirmCapture = document.getElementById('btn-confirm-capture');
+const modalPreviewImg = document.getElementById('modal-preview-img');
+const modalSpeciesSelect = document.getElementById('modal-species-select');
+const modalSlotSelect = document.getElementById('modal-slot-select');
+const datasetCount = document.getElementById('dataset-count');
+let isCameraPaused = false;
+
 // ──────────────────────────────────────────────
 //  Khởi tạo ứng dụng
 // ──────────────────────────────────────────────
 
 async function init() {
+  const savedTheme = localStorage.getItem('theme') || 'dark';
+  document.documentElement.setAttribute('data-theme', savedTheme);
+  if (themeToggle) {
+    themeToggle.checked = (savedTheme === 'light');
+    themeToggle.addEventListener('change', () => {
+      const newTheme = themeToggle.checked ? 'light' : 'dark';
+      document.documentElement.setAttribute('data-theme', newTheme);
+      localStorage.setItem('theme', newTheme);
+    });
+  }
+
   await fetchSpeciesList();
   populateSlotDropdowns();
   
   // Lắng nghe sự kiện
-  modeToggle.addEventListener('change', handleModeChange);
+  if (btnReconnectCamera) {
+    btnReconnectCamera.addEventListener('click', async () => {
+      btnReconnectCamera.disabled = true;
+      btnReconnectCamera.innerHTML = '⏳ Đang kết nối...';
+      await postAPI('/reconnect_camera');
+      setTimeout(() => {
+        btnReconnectCamera.disabled = false;
+        btnReconnectCamera.innerHTML = '🔄 Kết nối lại';
+        if (cameraFeed) cameraFeed.src = `${API_BASE}/stream?t=${Date.now()}`;
+      }, 2000);
+    });
+  }
+  if (modeToggle) modeToggle.addEventListener('change', handleModeChange);
   speciesSelect.addEventListener('change', handleSpeciesSelectChange);
   btnSimulate.addEventListener('click', handleSimulateClick);
   
@@ -82,6 +119,8 @@ async function init() {
   refreshCamera(); // Bắt đầu luồng camera
   setInterval(updateDetectionLog, 1000); // Cập nhật log mỗi giây
   updateDetectionLog();
+  setInterval(updateDatasetStats, 2000); // Cập nhật thống kê dataset
+  updateDatasetStats();
 }
 
 // ──────────────────────────────────────────────
@@ -152,11 +191,21 @@ async function fetchSpeciesList() {
       
       // Populate select dropdown
       speciesSelect.innerHTML = '<option value="">-- Chọn một loài muỗi --</option>';
+      if (modalSpeciesSelect) {
+        modalSpeciesSelect.innerHTML = '<option value="">-- Chọn loài muỗi đúng --</option><option value="new">➕ [Loài mới] Nhập tên loài muỗi khác...</option>';
+      }
       speciesList.forEach(sp => {
         const opt = document.createElement('option');
         opt.value = sp.class_id;
         opt.textContent = `[ID ${sp.class_id}] ${sp.name}`;
         speciesSelect.appendChild(opt);
+
+        if (modalSpeciesSelect) {
+          const optModal = document.createElement('option');
+          optModal.value = sp.class_id;
+          optModal.textContent = `[ID ${sp.class_id}] ${sp.name} (${sp.slot})`;
+          modalSpeciesSelect.appendChild(optModal);
+        }
       });
     } else {
       speciesSelect.innerHTML = `<option value="">-- Lỗi tải (HTTP ${response.status}) --</option>`;
@@ -181,7 +230,7 @@ function populateSlotDropdowns() {
   }
 
   // Đổ dữ liệu vào các select box
-  const selects = [slotToAngleSelect, slotFromSelect, slotToSelect];
+  const selects = [slotToAngleSelect, slotFromSelect, slotToSelect, modalSlotSelect].filter(Boolean);
   selects.forEach(select => {
     select.innerHTML = '';
     slots.forEach(slot => {
@@ -224,6 +273,7 @@ function handleSpeciesSelectChange() {
     
     // Mảng RGB
     const [r, g, b] = sp.rgb;
+    previewColorBox.style.backgroundColor = `rgb(${r}, ${g}, ${b})`;
     previewColorBox.style.color = `rgb(${r}, ${g}, ${b})`;
     previewRgbText.textContent = `RGB(${r}, ${g}, ${b})`;
     
@@ -252,29 +302,32 @@ let cameraConnected = false;
 let failedFetchCount = 0;
 
 function refreshCamera() {
-  const newImg = new Image();
-  newImg.onload = function() {
-    failedFetchCount = 0;
-    cameraFeed.src = this.src;
-    if (!cameraConnected) {
-      cameraConnected = true;
-      cameraOverlay.classList.add('hidden');
-      cameraStatus.textContent = '🟢 Trực tiếp';
-      cameraStatus.classList.add('connected');
-    }
-    setTimeout(refreshCamera, 100); // ~10 FPS
-  };
-  newImg.onerror = function() {
-    failedFetchCount++;
-    if (failedFetchCount >= 3 && cameraConnected) {
-      cameraConnected = false;
-      cameraOverlay.classList.remove('hidden');
-      cameraStatus.textContent = '🔴 Mất kết nối';
-      cameraStatus.classList.remove('connected');
-    }
-    setTimeout(refreshCamera, 300); // Thử lại nhanh sau 300ms
-  };
-  newImg.src = `${API_BASE}/snapshot?t=${Date.now()}`;
+  if (!cameraFeed.src || !cameraFeed.src.includes('/stream')) {
+    cameraFeed.src = `${API_BASE}/stream?t=${Date.now()}`;
+  }
+  
+  fetch(`${API_BASE}/status`)
+    .then(res => {
+      failedFetchCount = 0;
+      if (!cameraConnected) {
+        cameraConnected = true;
+        cameraOverlay.classList.add('hidden');
+        cameraStatus.textContent = '🟢 Trực tiếp (30 FPS)';
+        cameraStatus.classList.add('connected');
+      }
+    })
+    .catch(() => {
+      failedFetchCount++;
+      if (failedFetchCount >= 3 && cameraConnected) {
+        cameraConnected = false;
+        cameraOverlay.classList.remove('hidden');
+        cameraStatus.textContent = '🔴 Mất kết nối';
+        cameraStatus.classList.remove('connected');
+      }
+    })
+    .finally(() => {
+      setTimeout(refreshCamera, 1000); // Kiểm tra nhịp tim kết nối mỗi 1 giây
+    });
 }
 
 // ──────────────────────────────────────────────
@@ -316,6 +369,113 @@ async function updateDetectionLog() {
     }).join('');
   } catch (err) {
     // API not available yet
+  }
+}
+
+// ──────────────────────────────────────────────
+//  Active Learning & Dataset Management
+// ──────────────────────────────────────────────
+
+if (btnActiveCapture) {
+  btnActiveCapture.addEventListener('click', () => {
+    isCameraPaused = true; // Dừng cập nhật trạng thái UI
+    postAPI('/freeze_sample_frame'); // Khóa frame hiện tại trên backend!
+    if (modalPreviewImg) {
+      modalPreviewImg.src = `${API_BASE}/snapshot?t=${Date.now()}`;
+    }
+    if (modalSpeciesSelect) modalSpeciesSelect.value = '';
+    const customGroup = document.getElementById('custom-species-group');
+    if (customGroup) customGroup.classList.add('hidden');
+    const customInput = document.getElementById('modal-custom-species');
+    if (customInput) customInput.value = '';
+
+    if (labelModal) labelModal.classList.remove('hidden');
+  });
+}
+
+function closeLabelModal() {
+  if (labelModal) labelModal.classList.add('hidden');
+  isCameraPaused = false; // Tiếp tục luồng live camera
+  postAPI('/unfreeze_sample_frame'); // Hủy khóa frame trên backend
+}
+
+if (btnCloseModal) btnCloseModal.addEventListener('click', closeLabelModal);
+if (btnCancelCapture) btnCancelCapture.addEventListener('click', closeLabelModal);
+
+if (modalSpeciesSelect) {
+  modalSpeciesSelect.addEventListener('change', () => {
+    const classId = modalSpeciesSelect.value;
+    const customGroup = document.getElementById('custom-species-group');
+    if (classId === 'new') {
+      if (customGroup) customGroup.classList.remove('hidden');
+      const customInput = document.getElementById('modal-custom-species');
+      if (customInput) customInput.focus();
+    } else {
+      if (customGroup) customGroup.classList.add('hidden');
+      if (classId !== '') {
+        const sp = speciesList.find(s => s.class_id == classId);
+        if (sp && modalSlotSelect) {
+          modalSlotSelect.value = sp.slot;
+        }
+      }
+    }
+  });
+}
+
+if (btnConfirmCapture) {
+  btnConfirmCapture.addEventListener('click', async () => {
+    const classId = modalSpeciesSelect.value;
+    const slot = modalSlotSelect.value;
+    if (classId === '') {
+      alert('Vui lòng chọn tên loài muỗi hoặc chọn nhập loài mới!');
+      return;
+    }
+
+    let speciesName = '';
+    let angle = 0;
+    let finalClassId = 0;
+
+    if (classId === 'new') {
+      const customInput = document.getElementById('modal-custom-species');
+      speciesName = customInput ? customInput.value.trim() : '';
+      if (!speciesName) {
+        alert('Vui lòng nhập tên khoa học cho loài muỗi mới!');
+        if (customInput) customInput.focus();
+        return;
+      }
+      finalClassId = speciesList.length > 0 ? Math.max(...speciesList.map(s => s.class_id)) + 1 : 36;
+      const slotIdx = slot.charCodeAt(0) - 65;
+      angle = (slotIdx >= 0 && slotIdx < 36) ? slotIdx * 10 : 0;
+    } else {
+      finalClassId = parseInt(classId);
+      const sp = speciesList.find(s => s.class_id == finalClassId);
+      speciesName = sp ? sp.name : `Class ${finalClassId}`;
+      angle = sp ? sp.angle : 0;
+    }
+
+    await postAPI('/capture_sample', {
+      class_id: finalClassId,
+      species_name: speciesName,
+      slot: slot,
+      angle: angle
+    });
+
+    closeLabelModal();
+    updateDatasetStats();
+  });
+}
+
+async function updateDatasetStats() {
+  try {
+    const res = await fetch(`${API_BASE}/dataset/stats`);
+    if (res.ok) {
+      const data = await res.json();
+      if (datasetCount) {
+        datasetCount.textContent = `${data.total_samples} mẫu`;
+      }
+    }
+  } catch (e) {
+    // ignore
   }
 }
 

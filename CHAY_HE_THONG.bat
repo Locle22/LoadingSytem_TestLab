@@ -33,13 +33,16 @@ goto CHOOSE_HW
 echo.
 echo CHON THIET BI DIEU KHIEN PHAN CUNG:
 echo   [1] ESP32 S3 (Tu dong phan giai hoac Nhap IP)
-echo   [2] PLC cong nghiep (Che do in gia lap console)
+echo   [2] PLC Delta DVP14SS2 (Modbus RTU qua RS485)
 set /p "HW_MODE=Moi nhap lua chon (1 hoac 2, Mac dinh: 1): "
 if "%HW_MODE%"=="" set "HW_MODE=1"
 
 set "HW_ARG="
 if "%HW_MODE%"=="2" (
-    set "HW_ARG=--plc"
+    echo.
+    set /p "PLC_COM_INPUT=Nhap cong COM cua cáp RS485 (Mac dinh COM5): "
+    if "%PLC_COM_INPUT%"=="" set "PLC_COM_INPUT=COM5"
+    set "HW_ARG=--plc %PLC_COM_INPUT%"
 ) else (
     echo.
     set /p "ESP_IP_INPUT=Nhap IP cua ESP32 (Neu dung Hotspot DT nhap VD 172.20.10.3, de trong neu dung Tu Dong): "
@@ -52,7 +55,7 @@ echo   -> Nguon video: %CAM_ARG%
 if "%HW_MODE%"=="1" (
     echo   -> Thiet bi:   ESP32 S3 %HW_ARG%
 ) else (
-    echo   -> Thiet bi:   PLC cong nghiep (Stub)
+    echo   -> Thiet bi:   PLC Delta %HW_ARG%
 )
 echo -----------------------------------------------------------------
 echo.

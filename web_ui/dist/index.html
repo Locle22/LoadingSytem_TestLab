@@ -1,221 +1,334 @@
 <!DOCTYPE html>
-<html lang="vi">
+<html lang="vi" data-theme="dark">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Mosquito Sorter Dashboard & Simulator</title>
-    <!-- Google Fonts: Inter & Outfit -->
+    <title>Mosquito Sorter Dashboard V3 (Clay + Glass)</title>
+    <!-- Google Fonts: Inter, Outfit, Plus Jakarta Sans -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-    <script type="module" crossorigin src="/assets/index-CPz6ld0f.js"></script>
-    <link rel="stylesheet" crossorigin href="/assets/index-Ct9owxRA.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet">
+    <script type="module" crossorigin src="/assets/index-DyRxxc9U.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-CHOw50w7.css">
   </head>
   <body>
-    <div id="app">
-      <!-- Header / Top Bar -->
-      <header class="app-header">
-        <div class="logo-area">
-          <span class="mosquito-icon">🦟</span>
-          <h1>Mosquito Sorter <span class="accent-text">V2</span></h1>
-        </div>
-        <div class="system-status-bar">
-          <div class="status-indicator">
-            <span class="status-label">Trạng thái:</span>
-            <span id="status-mode" class="badge badge-auto">🟢 TỰ ĐỘNG</span>
-          </div>
-          <div class="status-indicator">
-            <span class="status-label">Bộ điều khiển:</span>
-            <span id="status-backend" class="badge badge-backend">ESP32 S3</span>
-          </div>
-          <div class="status-indicator">
-            <span class="status-label">Góc mâm:</span>
-            <span id="status-angle" class="badge badge-angle">0°</span>
-          </div>
-        </div>
-      </header>
-
-      <!-- Live Camera Feed -->
-      <section class="camera-section">
-        <div class="camera-container">
-          <div class="camera-header">
-            <h2>📹 Camera AI Trực tiếp</h2>
-            <span id="camera-status" class="camera-badge">⏳ Đang kết nối...</span>
-          </div>
-          <div class="camera-viewport">
-            <img id="camera-feed" alt="Camera Feed" />
-            <div id="camera-overlay" class="camera-overlay">
-              <p>📷 Đang chờ luồng hình ảnh từ Camera...</p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <!-- Main Container Grid -->
-      <main class="dashboard-grid">
+    <div id="app" class="clay-glass-app">
+      
+      <!-- ===================================================
+           VIEWPORT 1: TRANG 1 - CAMERA & ĐIỀU KHIỂN (100vh)
+           =================================================== -->
+      <section id="viewport-control" class="viewport-page page-1">
         
-        <!-- Left Side: System Control Mode & Simulation -->
-        <section class="dashboard-card card-primary">
-          <h2 class="card-title">Chế độ vận hành & Mô phỏng</h2>
+        <!-- Header Bar (Góc trên cùng) -->
+        <header class="app-header glass-header">
+          <div class="logo-area">
+            <span class="clay-icon">🦟</span>
+            <div class="logo-text">
+              <h1>Mosquito Sorter <span class="clay-badge-v3">V3</span></h1>
+              <p class="subtitle">Claymorphism & Glassmorphism AI Dashboard</p>
+            </div>
+          </div>
+
+          <div class="system-status-bar">
+            <div class="status-indicator">
+              <span class="status-label">Trạng thái:</span>
+              <span id="status-mode" class="badge badge-auto">🟢 TỰ ĐỘNG</span>
+            </div>
+            <div class="status-indicator">
+              <span class="status-label">Kết nối:</span>
+              <span id="status-backend" class="badge badge-backend">ESP32 S3</span>
+            </div>
+            <div class="status-indicator">
+              <span class="status-label">Góc mâm:</span>
+              <span id="status-angle" class="badge badge-angle">0°</span>
+            </div>
+          </div>
+
+          <!-- Top Right Corner Toggles as requested -->
+          <div class="header-toggles">
+            <!-- Theme Toggle: Light / Dark Mode -->
+            <div class="toggle-box clay-toggle-box">
+              <span class="toggle-icon">🌙</span>
+              <label class="clay-switch">
+                <input type="checkbox" id="theme-toggle">
+                <span class="clay-slider"></span>
+              </label>
+              <span class="toggle-icon">☀️</span>
+            </div>
+
+            <!-- Simulation Mode Toggle -->
+            <div class="toggle-box clay-toggle-box sim-toggle-box">
+              <span class="toggle-label-sim">🎮 Mô phỏng:</span>
+              <label class="clay-switch">
+                <input type="checkbox" id="mode-toggle">
+                <span class="clay-slider sim-slider"></span>
+              </label>
+            </div>
+          </div>
+        </header>
+
+        <!-- Central 2-Column View (Left: Camera | Right: API & Servo) -->
+        <div class="central-grid">
           
-          <div class="mode-select-area">
-            <label class="toggle-switch">
-              <input type="checkbox" id="mode-toggle">
-              <span class="slider"></span>
-            </label>
-            <span class="mode-toggle-text">Kích hoạt Chế độ Mô phỏng</span>
-          </div>
-
-          <div class="simulation-note">
-            <p id="mode-description">
-              Hệ thống đang chạy ở chế độ <strong>Tự động</strong>. Luồng AI camera sẽ liên tục gửi lệnh phân loại xuống phần cứng.
-            </p>
-          </div>
-
-          <!-- Simulator Panel (Active in simulation mode only) -->
-          <div id="simulator-panel" class="simulator-panel disabled">
-            <div class="form-group">
-              <label for="species-select">Chọn loài muỗi giả lập:</label>
-              <select id="species-select" disabled>
-                <option value="">-- Đang tải danh sách muỗi... --</option>
-              </select>
-            </div>
-
-            <!-- Species Spec Preview -->
-            <div id="species-preview" class="species-preview hidden">
-              <div class="preview-header">
-                <h3>Chi tiết loài muỗi đã chọn</h3>
+          <!-- LEFT COLUMN: Camera Feed (Glassmorphism Panel) -->
+          <div class="col-left glass-panel">
+            <div class="panel-header">
+              <div class="panel-title">
+                <span class="clay-mini-icon">📹</span>
+                <h2>Camera AI Trực tiếp</h2>
               </div>
-              <div class="preview-body">
-                <div class="preview-item">
-                  <span class="preview-label">Tên khoa học:</span>
-                  <span id="preview-name" class="preview-val">-</span>
-                </div>
-                <div class="preview-item">
-                  <span class="preview-label">ID của loài:</span>
-                  <span id="preview-id" class="preview-val">-</span>
-                </div>
-                <div class="preview-item">
-                  <span class="preview-label">Màu LED:</span>
-                  <span class="preview-val color-preview-val">
-                    <span id="preview-color-box" class="color-box"></span>
-                    <span id="preview-rgb-text">-</span>
-                  </span>
-                </div>
-                <div class="preview-item">
-                  <span class="preview-label">Ô xoay hứng mẫu:</span>
-                  <span id="preview-slot" class="preview-val font-highlight">-</span>
-                </div>
-                <div class="preview-item">
-                  <span class="preview-label">Góc xoay mốc:</span>
-                  <span id="preview-angle" class="preview-val font-highlight">-</span>
-                </div>
+              <div class="panel-actions">
+                <button id="btn-reconnect-camera" class="clay-btn clay-btn-reconnect" title="Kết nối lại luồng Camera">
+                  🔄 Kết nối lại
+                </button>
+                <button id="btn-active-capture" class="clay-btn clay-btn-capture">
+                  📸 Chụp & Gán nhãn thủ công
+                </button>
+                <span id="camera-status" class="camera-badge">⏳ Đang kết nối...</span>
               </div>
             </div>
 
-            <button id="btn-simulate" class="btn btn-simulate" disabled>
+            <div class="camera-viewport-wrapper">
+              <div class="camera-viewport clay-inset">
+                <img id="camera-feed" alt="Camera Feed" />
+                <div id="camera-overlay" class="camera-overlay">
+                  <div class="overlay-content">
+                    <span class="bounce-icon">📷</span>
+                    <p>Đang chờ luồng hình ảnh từ Camera...</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- RIGHT COLUMN: API & Servo Control (Claymorphism Cards) -->
+          <div class="col-right clay-panel-main">
+            <div class="panel-header">
+              <div class="panel-title">
+                <span class="clay-mini-icon">⚙️</span>
+                <h2>Hệ thống Lệnh API & Điều khiển Servo</h2>
+              </div>
+              <div class="mode-info-tiny">
+                <p id="mode-description">Chế độ <strong>Tự động</strong> đang kích hoạt.</p>
+              </div>
+            </div>
+
+            <div class="servo-controls-scroll">
+              <!-- Section 1: Basic Rotation -->
+              <div class="clay-card-inner">
+                <h3>🏠 Điều khiển Góc cơ bản (Tầng 2 & 3)</h3>
+                <div class="btn-group-home">
+                  <button id="btn-reset-home" class="clay-btn clay-btn-danger">
+                    🏠 Reset về vị trí gốc (Home 0°)
+                  </button>
+                </div>
+                <div class="control-row-grid">
+                  <div class="control-pair">
+                    <label for="rotate-left-deg">Độ xoay trái (°):</label>
+                    <div class="input-btn-group">
+                      <input type="number" id="rotate-left-deg" class="clay-input" value="10" min="1" max="359">
+                      <button id="btn-rotate-left" class="clay-btn clay-btn-action">⬅ Xoay Trái</button>
+                    </div>
+                  </div>
+                  <div class="control-pair">
+                    <label for="rotate-right-deg">Độ xoay phải (°):</label>
+                    <div class="input-btn-group">
+                      <input type="number" id="rotate-right-deg" class="clay-input" value="10" min="1" max="359">
+                      <button id="btn-rotate-right" class="clay-btn clay-btn-action">Xoay Phải ➡</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Section 2: Rotate Slot to Angle -->
+              <div class="clay-card-inner">
+                <h3>🎯 Xoay ô chỉ định đến Góc mong muốn (Tầng 3)</h3>
+                <div class="control-row-three-v3">
+                  <div class="input-group">
+                    <label for="slot-to-angle-select">Chọn Ô:</label>
+                    <select id="slot-to-angle-select" class="clay-select"></select>
+                  </div>
+                  <div class="input-group">
+                    <label for="slot-target-angle">Góc đích (°):</label>
+                    <input type="number" id="slot-target-angle" class="clay-input" value="90" min="0" max="359">
+                  </div>
+                  <button id="btn-slot-to-angle" class="clay-btn clay-btn-primary">🎯 Thực thi</button>
+                </div>
+              </div>
+
+              <!-- Section 3: Move Slot to Slot -->
+              <div class="clay-card-inner">
+                <h3>🔄 Hoán đổi vị trí ô (Tầng 3)</h3>
+                <div class="control-row-three-v3">
+                  <div class="input-group">
+                    <label for="slot-from-select">Xoay từ ô:</label>
+                    <select id="slot-from-select" class="clay-select"></select>
+                  </div>
+                  <div class="input-group">
+                    <label for="slot-to-select">Đến vị trí ô:</label>
+                    <select id="slot-to-select" class="clay-select"></select>
+                  </div>
+                  <button id="btn-move-slot" class="clay-btn clay-btn-primary">🔄 Hoán đổi</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- BOTTOM HORIZONTAL ROW: Mosquito Selection & Simulation Send -->
+        <div id="simulator-panel" class="bottom-sim-row clay-card-bottom disabled">
+          <div class="sim-row-left">
+            <span class="clay-icon-sm">🦟</span>
+            <label for="species-select" class="sim-label">Chọn loài muỗi mô phỏng:</label>
+            <select id="species-select" class="clay-select-large" disabled>
+              <option value="">-- Đang tải danh sách muỗi... --</option>
+            </select>
+          </div>
+
+          <!-- Compact Inline Spec Preview -->
+          <div id="species-preview" class="sim-row-center species-preview hidden">
+            <div class="spec-chip">
+              <span class="spec-lbl">Tên:</span>
+              <strong id="preview-name" class="spec-val">-</strong>
+            </div>
+            <div class="spec-chip">
+              <span class="spec-lbl">ID:</span>
+              <strong id="preview-id" class="spec-val">-</strong>
+            </div>
+            <div class="spec-chip">
+              <span class="spec-lbl">LED:</span>
+              <span class="spec-val color-preview-val">
+                <span id="preview-color-box" class="color-box"></span>
+                <span id="preview-rgb-text">-</span>
+              </span>
+            </div>
+            <div class="spec-chip">
+              <span class="spec-lbl">Ô:</span>
+              <strong id="preview-slot" class="spec-val slot-val">-</strong>
+            </div>
+            <div class="spec-chip">
+              <span class="spec-lbl">Góc:</span>
+              <strong id="preview-angle" class="spec-val angle-val">-</strong>
+            </div>
+          </div>
+
+          <div class="sim-row-right">
+            <button id="btn-simulate" class="clay-btn clay-btn-simulate" disabled>
               📤 Gửi tín hiệu mô phỏng xuống Phần cứng
             </button>
           </div>
-        </section>
+        </div>
 
-        <!-- Right Side: API Controls (High-level and Mid-level APIs) -->
-        <section class="dashboard-card card-secondary">
-          <h2 class="card-title">Hệ thống Lệnh API & Điều khiển Servo</h2>
-          
-          <div class="api-grid">
-            <!-- Reset Home & Absolute Turn -->
-            <div class="api-section">
-              <h3>Điều khiển Góc cơ bản (Tầng 2 & 3)</h3>
-              <div class="btn-group-home">
-                <button id="btn-reset-home" class="btn btn-danger">🏠 Reset về vị trí gốc (Home 0°)</button>
-              </div>
-              <div class="control-row">
-                <div class="input-group">
-                  <label for="rotate-left-deg">Độ xoay trái:</label>
-                  <input type="number" id="rotate-left-deg" value="10" min="1" max="359">
-                </div>
-                <button id="btn-rotate-left" class="btn btn-action">⬅ Xoay Trái</button>
-              </div>
-              <div class="control-row">
-                <div class="input-group">
-                  <label for="rotate-right-deg">Độ xoay phải:</label>
-                  <input type="number" id="rotate-right-deg" value="10" min="1" max="359">
-                </div>
-                <button id="btn-rotate-right" class="btn btn-action">Xoay Phải ➡</button>
-              </div>
-            </div>
-
-            <!-- Rotate Slot to Angle -->
-            <div class="api-section">
-              <h3>Xoay ô chỉ định đến Góc mong muốn (Tầng 3)</h3>
-              <div class="control-row-three">
-                <div class="input-group">
-                  <label for="slot-to-angle-select">Chọn Ô:</label>
-                  <select id="slot-to-angle-select">
-                    <!-- Dinamically loaded slots A-Z, A0-J0 -->
-                  </select>
-                </div>
-                <div class="input-group">
-                  <label for="slot-target-angle">Góc xoay (°):</label>
-                  <input type="number" id="slot-target-angle" value="90" min="0" max="359">
-                </div>
-                <button id="btn-slot-to-angle" class="btn btn-action">🎯 Thực thi</button>
-              </div>
-            </div>
-
-            <!-- Move Slot to Slot -->
-            <div class="api-section">
-              <h3>Hoán đổi vị trí ô (Tầng 3)</h3>
-              <div class="control-row-three">
-                <div class="input-group">
-                  <label for="slot-from-select">Xoay ô:</label>
-                  <select id="slot-from-select">
-                    <!-- Dinamically loaded -->
-                  </select>
-                </div>
-                <div class="input-group">
-                  <label for="slot-to-select">Đến vị trí ô:</label>
-                  <select id="slot-to-select">
-                    <!-- Dinamically loaded -->
-                  </select>
-                </div>
-                <button id="btn-move-slot" class="btn btn-action">🔄 Thực thi</button>
-              </div>
-            </div>
-          </div>
-        </section>
-
-      </main>
-
-      <!-- Detection Log -->
-      <section class="log-section">
-        <div class="log-container">
-          <div class="log-header">
-            <h2>📋 Lịch sử Nhận diện Thời gian thực</h2>
-            <span id="log-count" class="log-badge">0 bản ghi</span>
-          </div>
-          <div class="log-table-wrapper">
-            <table class="log-table">
-              <thead>
-                <tr>
-                  <th>Thời gian</th>
-                  <th>Loài muỗi</th>
-                  <th>ID</th>
-                  <th>Độ tin cậy</th>
-                  <th>Màu LED</th>
-                  <th>Ô mâm</th>
-                  <th>Góc</th>
-                </tr>
-              </thead>
-              <tbody id="log-body">
-                <tr class="log-empty"><td colspan="7">Chưa có dữ liệu nhận diện...</td></tr>
-              </tbody>
-            </table>
-          </div>
+        <!-- Scroll down hint -->
+        <div class="scroll-down-hint">
+          <span>⬇️ Kéo xuống Trang 2: Kho Dữ Liệu & Lịch Sử Nhận Diện ⬇️</span>
         </div>
       </section>
+
+      <!-- ===================================================
+           VIEWPORT 2: TRANG 2 - DATASET & LỊCH SỬ (Scroll down)
+           =================================================== -->
+      <section id="viewport-data" class="viewport-page page-2">
+        
+        <div class="page-2-grid">
+          <!-- Active Learning Dataset Panel -->
+          <section class="dataset-section glass-panel">
+            <div class="dataset-container">
+              <div class="dataset-header">
+                <div class="dataset-title-area">
+                  <span class="clay-mini-icon">🧠</span>
+                  <div>
+                    <h2>Kho Dữ liệu Train (Active Learning Dataset)</h2>
+                    <p>Thu thập mẫu ảnh thô, gán nhãn loài mới và xuất ra file ZIP chuẩn YOLOv8/YOLOv11</p>
+                  </div>
+                </div>
+                <div class="dataset-actions">
+                  <span id="dataset-count" class="clay-badge-count">0 mẫu</span>
+                  <a id="btn-export-dataset" href="/api/dataset/export" class="clay-btn clay-btn-export" target="_blank">
+                    📦 Tải xuống Dataset (.ZIP)
+                  </a>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- Detection Log Table -->
+          <section class="log-section glass-panel">
+            <div class="log-container">
+              <div class="log-header">
+                <div class="log-title-area">
+                  <span class="clay-mini-icon">📋</span>
+                  <h2>Lịch sử Nhận diện Thời gian thực</h2>
+                </div>
+                <span id="log-count" class="clay-badge-count">0 bản ghi</span>
+              </div>
+              <div class="log-table-wrapper">
+                <table class="log-table">
+                  <thead>
+                    <tr>
+                      <th>Thời gian</th>
+                      <th>Loài muỗi</th>
+                      <th>ID</th>
+                      <th>Độ tin cậy</th>
+                      <th>Màu LED</th>
+                      <th>Ô mâm</th>
+                      <th>Góc</th>
+                    </tr>
+                  </thead>
+                  <tbody id="log-body">
+                    <tr class="log-empty"><td colspan="7">Chưa có dữ liệu nhận diện...</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+        </div>
+
+      </section>
+
+      <!-- ===================================================
+           MODAL: ACTIVE LEARNING LABELING (Intact & Complete)
+           =================================================== -->
+      <div id="label-modal" class="modal-backdrop hidden">
+        <div class="modal-card clay-modal">
+          <div class="modal-header">
+            <h3>📸 Gán nhãn Mẫu vật Trực tiếp</h3>
+            <button id="btn-close-modal" class="btn-close clay-btn-icon">✕</button>
+          </div>
+          <div class="modal-body">
+            <div class="modal-preview clay-inset">
+              <img id="modal-preview-img" alt="Frozen Frame" />
+              <div class="preview-badge">⏸️ Khung hình đã tạm dừng</div>
+            </div>
+            <div class="modal-form">
+              <div class="form-group">
+                <label for="modal-species-select">Tên loài muỗi đúng / Loài mới:</label>
+                <select id="modal-species-select" class="clay-select">
+                  <option value="">-- Đang tải danh sách... --</option>
+                </select>
+              </div>
+              <div id="custom-species-group" class="form-group hidden">
+                <label for="modal-custom-species">✏️ Nhập tên khoa học của loài muỗi mới:</label>
+                <input type="text" id="modal-custom-species" class="clay-input" placeholder="VD: Anopheles stephensi (Loài mới)..." />
+              </div>
+              <div class="form-group">
+                <label for="modal-slot-select">Lọ phân loại đích (Mâm xoay về đây):</label>
+                <select id="modal-slot-select" class="clay-select"></select>
+              </div>
+              <div class="modal-info-box">
+                <p>💡 <strong>Lưu ý:</strong> Khi xác nhận, hệ thống sẽ lưu ảnh thô RAW và tọa độ nhãn vào <code>dataset_annotations.jsonl</code>, đồng thời phát lệnh xoay mâm về đúng ô đã chọn.</p>
+              </div>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button id="btn-cancel-capture" class="clay-btn clay-btn-secondary">❌ Hủy (Tiếp tục Camera)</button>
+            <button id="btn-confirm-capture" class="clay-btn clay-btn-confirm">✅ Xác nhận & Lưu mẫu</button>
+          </div>
+        </div>
+      </div>
+
     </div>
   </body>
 </html>

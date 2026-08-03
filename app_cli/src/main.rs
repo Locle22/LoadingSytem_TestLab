@@ -13,6 +13,7 @@ mod iot;
 mod hardware;
 mod api_layer3;
 mod web_server;
+pub mod plc;
 
 use std::process;
 use std::sync::{Arc, RwLock};
@@ -63,9 +64,9 @@ struct Cli {
     #[arg(long)]
     esp_ip: Option<String>,
 
-    /// Chạy chế độ điều khiển bằng PLC công nghiệp thay vì ESP32 S3
+    /// Chạy chế độ điều khiển bằng PLC công nghiệp thay vì ESP32 S3 (truyền cổng COM, ví dụ: COM5)
     #[arg(long)]
-    plc: bool,
+    plc: Option<String>,
 
     /// Compute device: `cpu`, `cuda:0`, `cuda:1`, `tensorrt:0`, …
     #[arg(short, long, default_value = "cpu")]
@@ -143,8 +144,9 @@ fn run() -> Result<()> {
     }
 
     // ── Khởi tạo Hardware Backend (Tầng 2) ────────────────────────
-    let backend: Arc<dyn HardwareBackend> = if cli.plc {
-        Arc::new(crate::hardware::PlcBackend::new())
+    let backend: Arc<dyn HardwareBackend> = if let Some(port) = cli.plc {
+        eprintln!("  ⏳ Khai bao backend PLC Delta qua {}...", port);
+        Arc::new(crate::plc::delta_backend::DeltaPlcBackend::new(port, 9600, 1))
     } else {
         let ip_or_host = cli.esp_ip.as_deref().unwrap_or("mosquito-sorter.local");
         
@@ -201,12 +203,15 @@ fn run() -> Result<()> {
         .build()?;
     let _guard = rt.enter();
 
+    let reconnect_camera = Arc::new(AtomicBool::new(false));
+
     crate::web_server::start_server(
         Arc::clone(&backend),
         Arc::clone(&is_simulation_mode),
         Arc::clone(&shared_frame),
         Arc::clone(&shared_detections),
         Arc::clone(&detection_log),
+        Arc::clone(&reconnect_camera),
         3000,
     );
 
@@ -222,6 +227,7 @@ fn run() -> Result<()> {
             shared_frame,
             shared_detections,
             detection_log,
+            reconnect_camera,
         )?;
     }
 
@@ -241,6 +247,7 @@ fn run_realtime(
     shared_frame: Arc<RwLock<Option<image::DynamicImage>>>,
     shared_detections: Arc<RwLock<Vec<ai_vision::types::Detection>>>,
     detection_log: Arc<RwLock<Vec<crate::web_server::DetectionLogEntry>>>,
+    reconnect_camera: Arc<AtomicBool>,
 ) -> Result<()> {
     eprintln!("  ✔ Dang khoi dong luong Camera. Nhan ESC tren cua so de thoat.");
 
@@ -249,34 +256,67 @@ fn run_realtime(
     // ── Thread 1: Camera (Fetcher Thread) ──
     let frame_clone = Arc::clone(&shared_frame);
     let running_clone = Arc::clone(&is_running);
+    let reconnect_clone = Arc::clone(&reconnect_camera);
     
     // Nokhwa Camera không phai type Send, do do ta khoi tao truc tiep ben trong thread 
     // de khong can phai truyen object qua bien gioi thread
     thread::spawn(move || {
-        let mut stream = if let Some(url) = &camera_url {
-            match ai_vision::stream::MjpegStream::new(url) {
-                Ok(mjpeg) => ai_vision::stream::VideoStream::Mjpeg(mjpeg),
-                Err(e) => {
-                    eprintln!("  ✖ Loi ket noi DroidCam: {:?}", e);
-                    return;
-                }
-            }
-        } else if let Some(index) = usb_cam_index {
-            match ai_vision::stream::new_webcam(index) {
-                Ok(cam) => ai_vision::stream::VideoStream::Webcam(Box::new(cam)),
-                Err(e) => {
-                    eprintln!("  ✖ Loi mo USB Camera: {:?}", e);
-                    return;
-                }
-            }
-        } else {
-            return;
-        };
+        let mut current_stream: Option<ai_vision::stream::VideoStream> = None;
 
         while *running_clone.read().unwrap() {
-            if let Ok(frame) = stream.next_frame() {
-                // Ghi de khung hinh moi nhat vao buffer chia se
-                *frame_clone.write().unwrap() = Some(frame);
+            if reconnect_clone.load(Ordering::SeqCst) || current_stream.is_none() {
+                reconnect_clone.store(false, Ordering::SeqCst);
+                if current_stream.is_some() {
+                    println!("  🔄 Đang yêu cầu kết nối lại luồng Camera...");
+                }
+                current_stream = None;
+
+                let new_stream = if let Some(url) = &camera_url {
+                    match ai_vision::stream::MjpegStream::new(url) {
+                        Ok(mjpeg) => {
+                            println!("  ✔ Đã kết nối thành công DroidCam IP Camera: {}", url);
+                            Some(ai_vision::stream::VideoStream::Mjpeg(mjpeg))
+                        },
+                        Err(e) => {
+                            eprintln!("  ✖ Lỗi kết nối DroidCam: {:?}", e);
+                            None
+                        }
+                    }
+                } else if let Some(index) = usb_cam_index {
+                    match ai_vision::stream::new_webcam(index) {
+                        Ok(cam) => {
+                            println!("  ✔ Đã kết nối thành công USB Webcam {}", index);
+                            Some(ai_vision::stream::VideoStream::Webcam(Box::new(cam)))
+                        },
+                        Err(e) => {
+                            eprintln!("  ✖ Lỗi mở USB Camera: {:?}", e);
+                            None
+                        }
+                    }
+                } else {
+                    None
+                };
+
+                if new_stream.is_none() {
+                    thread::sleep(Duration::from_secs(2));
+                    continue;
+                }
+                current_stream = new_stream;
+            }
+
+            if let Some(stream) = current_stream.as_mut() {
+                match stream.next_frame() {
+                    Ok(frame) => {
+                        *frame_clone.write().unwrap() = Some(frame);
+                    },
+                    Err(e) => {
+                        eprintln!("  ✖ Mất kết nối luồng Camera ({:?}), đang tự động kết nối lại...", e);
+                        current_stream = None;
+                        thread::sleep(Duration::from_secs(1));
+                    }
+                }
+            } else {
+                thread::sleep(Duration::from_millis(500));
             }
         }
     });
